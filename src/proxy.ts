@@ -17,8 +17,9 @@ function allow(ip: string, key: string, limit: number, windowMs: number) {
   return false;
 }
 
-export function middleware(req: NextRequest) {
-  const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'unknown';
+export function proxy(req: NextRequest) {
+  const fwd = req.headers.get('x-forwarded-for') || '';
+  const ip = fwd.split(',')[0]?.trim() || 'unknown';
   const path = req.nextUrl.pathname;
 
   if (path.startsWith('/api/admin/login')) {
