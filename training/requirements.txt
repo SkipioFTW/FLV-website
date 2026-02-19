@@ -1,0 +1,6 @@
+numpy
+pandas
+scikit-learn
+supabase
+python-dotenv
+requests
