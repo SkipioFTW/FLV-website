@@ -20,7 +20,10 @@ export async function GET() {
 
     const teamIds = Array.from(
       new Set(
-        matches.flatMap((m: any) => [m.team1_id, m.team2_id]).filter(Boolean)
+        matches
+          .flatMap((m: any) => [m.team1_id, m.team2_id])
+          .filter((v: any) => v !== null && v !== undefined)
+          .map((v: any) => Number(v))
       )
     );
     const { data: teams } = await supabaseServer
@@ -28,7 +31,7 @@ export async function GET() {
       .select('id,name,tag,logo_display')
       .in('id', teamIds as number[]);
     const teamMap = new Map<number, any>();
-    (teams || []).forEach((t: any) => teamMap.set(t.id, t));
+    (teams || []).forEach((t: any) => teamMap.set(Number(t.id), t));
 
     let model: any = null;
     let scalers: any = null;
@@ -46,8 +49,8 @@ export async function GET() {
         if (model && scalers) {
           prob = logisticPredict(fv.values, model, scalers);
         }
-        const t1 = teamMap.get(m.team1_id) || { id: m.team1_id, name: null, tag: null };
-        const t2 = teamMap.get(m.team2_id) || { id: m.team2_id, name: null, tag: null };
+        const t1 = teamMap.get(Number(m.team1_id)) || { id: m.team1_id, name: null, tag: null };
+        const t2 = teamMap.get(Number(m.team2_id)) || { id: m.team2_id, name: null, tag: null };
         items.push({
           id: m.id,
           week: m.week,
@@ -58,8 +61,8 @@ export async function GET() {
           probability_team1_win: prob,
         });
       } catch {
-        const t1 = teamMap.get(m.team1_id) || { id: m.team1_id, name: null, tag: null };
-        const t2 = teamMap.get(m.team2_id) || { id: m.team2_id, name: null, tag: null };
+        const t1 = teamMap.get(Number(m.team1_id)) || { id: m.team1_id, name: null, tag: null };
+        const t2 = teamMap.get(Number(m.team2_id)) || { id: m.team2_id, name: null, tag: null };
         items.push({
           id: m.id,
           week: m.week,
