@@ -174,7 +174,7 @@ export default function AdminPage() {
                         ))}
                     </div>
                 </header>
-                <section className="grid md:grid-cols-3 gap-6 mb-8">
+                <section className="grid md:grid-cols-4 gap-6 mb-8">
                     <div className="custom-card glass p-6 text-center rounded">
                         <h4 className="text-val-blue mb-1">LIVE USERS</h4>
                         <div className="font-display text-3xl">{/* Placeholder: use global stats livePlayers */}</div>
@@ -189,6 +189,13 @@ export default function AdminPage() {
                         <h4 className="text-val-red mb-1">SESSION ROLE</h4>
                         <div className="font-display text-xl">ADMIN</div>
                         <div className="text-foreground/40 text-xs">Authorized Session</div>
+                    </div>
+                    <div className="custom-card glass p-6 text-center rounded">
+                        <h4 className="text-val-blue mb-1">PREDICTIONS</h4>
+                        <div className="text-foreground/60 text-xs mb-3">Manage model and simulate</div>
+                        <a href="/admin/predictions" className="inline-block px-4 py-2 bg-val-blue text-white rounded text-[10px] font-black uppercase tracking-widest">
+                            Open Predictions Admin
+                        </a>
                     </div>
                 </section>
 
