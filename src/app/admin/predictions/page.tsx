@@ -9,6 +9,8 @@ export default function PredictionsAdminPage() {
   const [prob, setProb] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState<{ accuracy?: number; auc?: number; logLoss?: number; version?: string; updatedAt?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/teams') // optional: if not present, fallback to supabase client fetch in client
@@ -39,10 +41,36 @@ export default function PredictionsAdminPage() {
   };
 
   const reloadModel = async () => {
-    await fetch('/api/model/reload', { method: 'POST' });
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch('/api/model/reload', { method: 'POST' });
+      if (!r.ok) {
+        const t = await r.text();
+        setMsg(`Reload failed: ${t || r.status}`);
+      } else {
+        setMsg('Model cache cleared');
+      }
+    } catch (e: any) {
+      setMsg(`Reload failed`);
+    } finally {
+      setBusy(false);
+    }
   };
   const retrain = async () => {
-    await fetch('/api/admin/model/retrain', { method: 'POST' });
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch('/api/admin/model/retrain', { method: 'POST' });
+      if (!r.ok) {
+        const t = await r.text();
+        setMsg(`Retrain failed: ${t || r.status}`);
+      } else {
+        setMsg('Retrain dispatched to GitHub Actions');
+      }
+    } catch (e: any) {
+      setMsg('Retrain failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -63,10 +91,15 @@ export default function PredictionsAdminPage() {
             ) : 'No metrics found (train the model to populate).'}
           </div>
           <div className="flex gap-2">
-            <button onClick={reloadModel} className="px-4 py-2 bg-white/10 rounded text-[10px] font-black uppercase tracking-widest">Reload Model</button>
+            <button type="button" onClick={reloadModel} disabled={busy} className="px-4 py-2 bg-white/10 rounded text-[10px] font-black uppercase tracking-widest disabled:opacity-50 cursor-pointer">
+              {busy ? 'Working...' : 'Reload Model'}
+            </button>
             <a href="https://github.com/" target="_blank" className="px-4 py-2 bg-val-blue text-white rounded text-[10px] font-black uppercase tracking-widest">Open Training Workflow</a>
-            <button onClick={retrain} className="px-4 py-2 bg-val-red text-white rounded text-[10px] font-black uppercase tracking-widest">Re-train Now</button>
+            <button type="button" onClick={retrain} disabled={busy} className="px-4 py-2 bg-val-red text-white rounded text-[10px] font-black uppercase tracking-widest disabled:opacity-50 cursor-pointer">
+              {busy ? 'Dispatching...' : 'Re-train Now'}
+            </button>
           </div>
+          {msg && <div className="text-[10px] font-black uppercase tracking-widest">{msg}</div>}
         </div>
         <div className="glass p-6 rounded space-y-3">
           <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">Simulator</div>
