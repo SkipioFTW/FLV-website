@@ -235,6 +235,8 @@ export default function AdminPage() {
                                                                         window.localStorage.setItem('auto_selected_match_week', String(cand.week));
                                                                         window.localStorage.setItem('pending_match_db_id', String(m.id));
                                                                 if (m.url) window.localStorage.setItem('auto_selected_match_url', m.url);
+                                                                const fmt = (m as any).format;
+                                                                if (fmt) window.localStorage.setItem('pending_match_format', String(fmt));
                                                                     } catch {}
                                                                 } else {
                                                                     setActiveTab('editor');
@@ -884,6 +886,7 @@ function ScoreMapEditor() {
             const wk = window.localStorage.getItem('auto_selected_match_week');
             const url = window.localStorage.getItem('auto_selected_match_url');
             const pid = window.localStorage.getItem('pending_match_db_id');
+            const fmt = window.localStorage.getItem('pending_match_format');
             if (mid) setMatchId(parseInt(mid));
             if (wk) setSelectedWeek(parseInt(wk));
             if (url) {
@@ -891,6 +894,7 @@ function ScoreMapEditor() {
                 setGhId(m ? m[1] : url.replace(/[^A-Za-z0-9\-]/g,''));
             }
             if (pid) setPendingId(parseInt(pid));
+            if (fmt && (fmt === 'BO1' || fmt === 'BO3' || fmt === 'BO5')) setFormat(fmt as any);
         } catch {}
     }, []);
 
@@ -1127,7 +1131,9 @@ function ScoreMapEditor() {
                     <div>
                         <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Select Map</label>
                         <select value={mapIndex} onChange={e => setMapIndex(parseInt(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm">
-                            {[0,1,2,3,4].map(i => <option key={i} value={i}>{i+1}</option>)}
+                            {Array.from({ length: format === 'BO1' ? 1 : format === 'BO3' ? 3 : 5 }).map((_, i) => (
+                                <option key={i} value={i}>{i + 1}</option>
+                            ))}
                         </select>
                     </div>
                     <div>

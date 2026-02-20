@@ -41,6 +41,9 @@ export default function PredictionsAdminPage() {
   const reloadModel = async () => {
     await fetch('/api/model/reload', { method: 'POST' });
   };
+  const retrain = async () => {
+    await fetch('/api/admin/model/retrain', { method: 'POST' });
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -62,6 +65,7 @@ export default function PredictionsAdminPage() {
           <div className="flex gap-2">
             <button onClick={reloadModel} className="px-4 py-2 bg-white/10 rounded text-[10px] font-black uppercase tracking-widest">Reload Model</button>
             <a href="https://github.com/" target="_blank" className="px-4 py-2 bg-val-blue text-white rounded text-[10px] font-black uppercase tracking-widest">Open Training Workflow</a>
+            <button onClick={retrain} className="px-4 py-2 bg-val-red text-white rounded text-[10px] font-black uppercase tracking-widest">Re-train Now</button>
           </div>
         </div>
         <div className="glass p-6 rounded space-y-3">

@@ -13,6 +13,7 @@ const navItems = [
     { name: "Players", href: "/players" },
     { name: "Teams", href: "/teams" },
     { name: "Subs", href: "/substitutions" },
+    { name: "Predictions", href: "/predictions" },
     { name: "Playoffs", href: "/playoffs" },
     { name: "Admin", href: "/admin", isAdmin: true },
 ];

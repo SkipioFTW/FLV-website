@@ -18,6 +18,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { matchId, mapData, playerStats, meta } = body || {};
   if (!matchId || !mapData) return NextResponse.json({ error: 'bad request' }, { status: 400 });
+  // Enforce map index cap based on match format
+  const { data: fmtMatch } = await supabaseServer.from('matches').select('format').eq('id', matchId).single();
+  const fmt = (fmtMatch?.format as string) || 'BO3';
+  const cap = fmt === 'BO1' ? 1 : fmt === 'BO3' ? 3 : 5;
+  if (mapData.index >= cap) {
+    return NextResponse.json({ error: `map_index exceeds limit for ${fmt}` }, { status: 400 });
+  }
   await Promise.all([
     supabaseServer.from('match_maps').delete().eq('match_id', matchId).eq('map_index', mapData.index),
     supabaseServer.from('match_stats_map').delete().eq('match_id', matchId).eq('map_index', mapData.index),
