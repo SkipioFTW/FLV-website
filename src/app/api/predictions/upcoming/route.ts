@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer } from '@/lib/supabaseServer';
 import { buildFeatures } from '@/lib/features/buildFeatures';
 import { loadModel } from '@/lib/model/registry';
 import { logisticPredict } from '@/lib/model/infer';
@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const { data: matches } = await supabase
+    const { data: matches } = await supabaseServer
       .from('matches')
       .select('id, week, group_name, team1_id, team2_id, status')
       .neq('status', 'completed')
@@ -23,7 +23,7 @@ export async function GET() {
         matches.flatMap((m: any) => [m.team1_id, m.team2_id]).filter(Boolean)
       )
     );
-    const { data: teams } = await supabase
+    const { data: teams } = await supabaseServer
       .from('teams')
       .select('id,name,tag,logo_display')
       .in('id', teamIds as number[]);
@@ -46,23 +46,27 @@ export async function GET() {
         if (model && scalers) {
           prob = logisticPredict(fv.values, model, scalers);
         }
+        const t1 = teamMap.get(m.team1_id) || { id: m.team1_id, name: null, tag: null };
+        const t2 = teamMap.get(m.team2_id) || { id: m.team2_id, name: null, tag: null };
         items.push({
           id: m.id,
           week: m.week,
           group: m.group_name,
           status: m.status,
-          team1: teamMap.get(m.team1_id) || { id: m.team1_id, name: 'Team 1' },
-          team2: teamMap.get(m.team2_id) || { id: m.team2_id, name: 'Team 2' },
+          team1: { id: t1.id, name: t1.name, tag: t1.tag, logo: t1.logo_display },
+          team2: { id: t2.id, name: t2.name, tag: t2.tag, logo: t2.logo_display },
           probability_team1_win: prob,
         });
       } catch {
+        const t1 = teamMap.get(m.team1_id) || { id: m.team1_id, name: null, tag: null };
+        const t2 = teamMap.get(m.team2_id) || { id: m.team2_id, name: null, tag: null };
         items.push({
           id: m.id,
           week: m.week,
           group: m.group_name,
           status: m.status,
-          team1: teamMap.get(m.team1_id) || { id: m.team1_id, name: 'Team 1' },
-          team2: teamMap.get(m.team2_id) || { id: m.team2_id, name: 'Team 2' },
+          team1: { id: t1.id, name: t1.name, tag: t1.tag, logo: t1.logo_display },
+          team2: { id: t2.id, name: t2.name, tag: t2.tag, logo: t2.logo_display },
           probability_team1_win: 0.5,
         });
       }

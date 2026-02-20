@@ -94,10 +94,12 @@ export default function PredictionsPage() {
               <div className="space-y-3">
                 {upcoming.map((m) => {
                   const pct = Math.round((m.probability_team1_win || 0) * 100);
+                  const name1 = m.team1?.name || m.team1?.tag || `Team ${m.team1?.id ?? 1}`;
+                  const name2 = m.team2?.name || m.team2?.tag || `Team ${m.team2?.id ?? 2}`;
                   return (
                     <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center bg-white/[0.02] rounded p-3 border border-white/5">
                       <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 md:col-span-1">Week {m.week || '-'}</div>
-                      <div className="md:col-span-2 text-sm font-bold">{m.team1?.name} vs {m.team2?.name}</div>
+                      <div className="md:col-span-2 text-sm font-bold">{name1} vs {name2}</div>
                       <div className="md:col-span-2">
                         <div className="w-full h-2 bg-white/10 rounded overflow-hidden">
                           <div className="h-2 bg-val-blue" style={{ width: `${pct}%` }} />
