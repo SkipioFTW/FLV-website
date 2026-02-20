@@ -77,6 +77,9 @@ export type PlayerStats = {
         deaths: number;
         assists: number;
         result: 'win' | 'loss' | 'draw';
+        is_sub?: boolean;
+        subbed_for_id?: number | null;
+        subbed_for_name?: string | null;
     }[];
 };
 
