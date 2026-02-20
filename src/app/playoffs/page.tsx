@@ -29,6 +29,7 @@ export default async function PlayoffsPage() {
                         <p className="text-foreground/60">Playoff bracket will be revealed after the regular season concludes.</p>
                     </div>
                 ) : (
+                <>
                 <header className="max-w-7xl mx-auto w-full mb-12">
                     <h1 className="font-display text-4xl md:text-6xl font-black italic text-val-red uppercase tracking-tighter mb-4 text-center">
                         Championship Brackets
@@ -115,6 +116,7 @@ export default async function PlayoffsPage() {
                         </div>
                     ))}
                 </div>
+                </>
                 )}
             </main>
         </div>
