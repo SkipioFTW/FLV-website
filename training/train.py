@@ -7,6 +7,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from supabase import create_client, Client
+import tempfile
+import os
 
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -83,10 +85,18 @@ def main():
         "version": str(int(time.time())),
         "updatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
-    # Upload JSON bytes using BytesIO; 'upload' treats str as file path.
     def upload_json(path, obj):
-        buf = io.BytesIO(json.dumps(obj).encode("utf-8"))
-        sb.storage.from_("models").upload(path, buf, {"contentType": "application/json", "upsert": True})
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+        try:
+            tmp.write(json.dumps(obj).encode("utf-8"))
+            tmp.flush()
+            tmp.close()
+            sb.storage.from_("models").upload(path, tmp.name, {"contentType": "application/json", "upsert": "true"})
+        finally:
+            try:
+                os.remove(tmp.name)
+            except:
+                pass
     upload_json("current/model.json", model)
     upload_json("current/scalers.json", scalers)
     upload_json("current/metrics.json", metrics)
