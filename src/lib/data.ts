@@ -567,11 +567,18 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
         // 5. Fetch all teams for opponent names
         const { data: allTeams } = await supabase.from('teams').select('id, name');
         const teamNameMap = new Map(allTeams?.map(t => [t.id, t.name]) || []);
+        // Fetch names for any subbed_for_id we might need to display
+        const subForIds = Array.from(new Set((stats || []).map((s: any) => s.subbed_for_id).filter((v: any) => v)));
+        const { data: subForPlayers } = subForIds.length > 0
+            ? await supabase.from('players').select('id,name').in('id', subForIds)
+            : { data: [] as any[] } as any;
+        const subForNameMap = new Map((subForPlayers || []).map((p: any) => [p.id, p.name]));
 
         // 6. Process Performance over time (by week)
         const weekStats = new Map<number, { acs: number[]; kills: number; deaths: number; rounds: number }>();
         const agentCounts = new Map<string, number>();
         let totalWins = 0;
+        const winsByMatch = new Set<number>();
         let totalRounds = 0;
         let totalStatsKills = 0;
         let totalStatsDeaths = 0;
@@ -602,14 +609,19 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
                 agentCounts.set(s.agent, (agentCounts.get(s.agent) || 0) + 1);
             }
 
-            // Recent Match
-            const opponentId = match.team1_id === player.default_team_id ? match.team2_id : match.team1_id;
+            // Recent Match — determine team actually played for
+            let playedFor = s.team_id || null;
+            if (!playedFor) {
+                if (player.default_team_id === match.team1_id) playedFor = match.team1_id;
+                else if (player.default_team_id === match.team2_id) playedFor = match.team2_id;
+            }
+            const opponentId = playedFor === match.team1_id ? match.team2_id : match.team1_id;
 
             let result: 'win' | 'loss' | 'draw' = 'draw';
-            if (match.winner_id) {
-                const won = match.winner_id === player.default_team_id;
+            if (match.winner_id && playedFor) {
+                const won = match.winner_id === playedFor;
                 result = won ? 'win' : 'loss';
-                if (won) totalWins++;
+                if (won) winsByMatch.add(s.match_id);
             }
 
             recentMatches.push({
@@ -621,7 +633,10 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
                 kills: s.kills,
                 deaths: s.deaths,
                 assists: s.assists,
-                result
+                result,
+                is_sub: Boolean(s.is_sub),
+                subbed_for_id: s.subbed_for_id || null,
+                subbed_for_name: s.subbed_for_id ? (subForNameMap.get(s.subbed_for_id) || 'Unknown') : null
             });
         });
 
@@ -642,7 +657,12 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
         (stats || []).forEach(s => {
             const match = matchMap.get(s.match_id);
             if (!match || match.status !== 'completed' || !s.agent) return;
-            const isWin = match.winner_id && match.winner_id === player.default_team_id;
+            let playedFor = s.team_id || null;
+            if (!playedFor) {
+                if (player.default_team_id === match.team1_id) playedFor = match.team1_id;
+                else if (player.default_team_id === match.team2_id) playedFor = match.team2_id;
+            }
+            const isWin = Boolean(match.winner_id && playedFor && match.winner_id === playedFor);
             const curr = agentWrMap.get(s.agent) || { wins: 0, losses: 0 };
             if (isWin) curr.wins += 1; else curr.losses += 1;
             agentWrMap.set(s.agent, curr);
@@ -661,7 +681,12 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
             const match = matchMap.get(s.match_id);
             const mapInfo = mapMetadataMap.get(`${s.match_id}-${s.map_index || 0}`);
             if (!match || match.status !== 'completed' || !mapInfo?.map_name) return;
-            const isWin = match.winner_id && match.winner_id === player.default_team_id;
+            let playedFor = s.team_id || null;
+            if (!playedFor) {
+                if (player.default_team_id === match.team1_id) playedFor = match.team1_id;
+                else if (player.default_team_id === match.team2_id) playedFor = match.team2_id;
+            }
+            const isWin = Boolean(match.winner_id && playedFor && match.winner_id === playedFor);
             const curr = mapWrMap.get(mapInfo.map_name) || { wins: 0, losses: 0 };
             if (isWin) curr.wins += 1; else curr.losses += 1;
             mapWrMap.set(mapInfo.map_name, curr);
@@ -687,7 +712,7 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
                 avgAcs: performance.length > 0 ? Math.round(performance.reduce((acc, curr) => acc + curr.acs, 0) / performance.length) : 0,
                 kd: totalStatsDeaths > 0 ? Number((totalStatsKills / totalStatsDeaths).toFixed(2)) : totalStatsKills,
                 kpr: totalRounds > 0 ? Number((totalStatsKills / totalRounds).toFixed(2)) : 0,
-                winRate: matchIds.length > 0 ? Math.round((totalWins / matchIds.length) * 100) : 0,
+                winRate: matchIds.length > 0 ? Math.round((winsByMatch.size / matchIds.length) * 100) : 0,
                 matches: matchIds.length
             },
             recentMatches: recentMatches.sort((a, b) => b.week - a.week).slice(0, 10)

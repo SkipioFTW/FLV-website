@@ -265,6 +265,7 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                                                 <th className="px-6 py-4">Map</th>
                                                 <th className="px-6 py-4 text-center">ACS</th>
                                                 <th className="px-6 py-4 text-center">K/D/A</th>
+                                                <th className="px-6 py-4 text-center">Sub</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-white/5">
@@ -283,6 +284,13 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                                                     <td className="px-6 py-4 text-center font-display font-bold text-val-blue">{match.acs}</td>
                                                     <td className="px-6 py-4 text-center text-sm font-medium">
                                                         {match.kills} / <span className="text-val-red">{match.deaths}</span> / {match.assists}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center text-xs">
+                                                        {match.is_sub ? (
+                                                            <span className="px-2 py-1 rounded bg-white/10">
+                                                                for {match.subbed_for_name || 'Unknown'}
+                                                            </span>
+                                                        ) : '—'}
                                                     </td>
                                                 </tr>
                                             ))}
