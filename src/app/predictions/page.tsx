@@ -40,8 +40,13 @@ export default function PredictionsPage() {
     }
   };
 
-  const t1 = useMemo(() => teams.find(t => t.id === team1)?.name || 'Team 1', [teams, team1]);
-  const t2 = useMemo(() => teams.find(t => t.id === team2)?.name || 'Team 2', [teams, team2]);
+  const teamMap = useMemo(() => {
+    const m = new Map<number, { id: number; name: string }>();
+    teams.forEach(t => m.set(Number(t.id), t));
+    return m;
+  }, [teams]);
+  const t1 = useMemo(() => teamMap.get(Number(team1))?.name || 'Team 1', [teamMap, team1]);
+  const t2 = useMemo(() => teamMap.get(Number(team2))?.name || 'Team 2', [teamMap, team2]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -94,8 +99,12 @@ export default function PredictionsPage() {
               <div className="space-y-3">
                 {upcoming.map((m) => {
                   const pct = Math.round((m.probability_team1_win || 0) * 100);
-                  const name1 = m.team1?.name || m.team1?.tag || `Team ${m.team1?.id ?? 1}`;
-                  const name2 = m.team2?.name || m.team2?.tag || `Team ${m.team2?.id ?? 2}`;
+                  const t1n = teamMap.get(Number(m.team1?.id))?.name || m.team1?.name || '';
+                  const t1t = teamMap.get(Number(m.team1?.id))?.name ? '' : (teamMap.get(Number(m.team1?.id)) as any)?.tag;
+                  const t2n = teamMap.get(Number(m.team2?.id))?.name || m.team2?.name || '';
+                  const t2t = teamMap.get(Number(m.team2?.id))?.name ? '' : (teamMap.get(Number(m.team2?.id)) as any)?.tag;
+                  const name1 = t1n || t1t || m.team1?.tag || `Team ${m.team1?.id ?? ''}`;
+                  const name2 = t2n || t2t || m.team2?.tag || `Team ${m.team2?.id ?? ''}`;
                   return (
                     <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center bg-white/[0.02] rounded p-3 border border-white/5">
                       <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 md:col-span-1">Week {m.week || '-'}</div>
