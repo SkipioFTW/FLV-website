@@ -18,18 +18,10 @@ export async function GET() {
       return NextResponse.json({ items: [] });
     }
 
-    const teamIds = Array.from(
-      new Set(
-        matches
-          .flatMap((m: any) => [m.team1_id, m.team2_id])
-          .filter((v: any) => v !== null && v !== undefined)
-          .map((v: any) => Number(v))
-      )
-    );
+    // Fetch all teams to avoid empty results due to type mismatch in .in()
     const { data: teams } = await supabaseServer
       .from('teams')
-      .select('id,name,tag,logo_display')
-      .in('id', teamIds as number[]);
+      .select('id,name,tag,logo_display');
     const teamMap = new Map<number, any>();
     (teams || []).forEach((t: any) => teamMap.set(Number(t.id), t));
 
