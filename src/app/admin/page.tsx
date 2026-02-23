@@ -1035,8 +1035,10 @@ function ScoreMapEditor() {
     const [t1Rounds, setT1Rounds] = useState(0);
     const [t2Rounds, setT2Rounds] = useState(0);
     const [winnerId, setWinnerId] = useState<number | null>(null);
-    const [team1Rows, setTeam1Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; conf: string }>>([]);
-    const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; conf: string }>>([]);
+    const [team1Rows, setTeam1Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
+    const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
+    const [roundsData, setRoundsData] = useState<any[]>([]);
+    const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
     const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove"];
 
     useEffect(() => {
@@ -1112,10 +1114,17 @@ function ScoreMapEditor() {
             setMapName(out.map_name);
             setT1Rounds(Math.round(out.t1_rounds));
             setT2Rounds(Math.round(out.t2_rounds));
+            setRoundsData(out.rounds);
             if (out.t1_rounds > out.t2_rounds) setWinnerId(sel.team1.id);
             else if (out.t2_rounds > out.t1_rounds) setWinnerId(sel.team2.id);
 
+            // Enhance playerRoundsData with actual player_ids
             const labToId = new Map(allPlayers.map(p => [String(p.riot_id || "").trim().toLowerCase(), p.id]));
+            const resolvedPlayerRounds = (out.playerRounds || []).map(pr => ({
+                ...pr,
+                player_id: labToId.get(pr.rid)
+            })).filter(pr => pr.player_id);
+            setPlayerRoundsData(resolvedPlayerRounds);
             const riotToLabel = new Map(allPlayers.map(p => [String(p.riot_id || "").trim().toLowerCase(), `${p.name} (${p.riot_id || ''})`]));
 
             const processTeam = (teamNum: 1 | 2, roster: typeof allPlayers) => {
@@ -1149,6 +1158,13 @@ function ScoreMapEditor() {
                         kills: m.s.k,
                         deaths: m.s.d,
                         assists: m.s.a,
+                        adr: m.s.adr,
+                        kast: m.s.kast,
+                        hs_pct: m.s.hs_pct,
+                        fk: m.s.fk,
+                        fd: m.s.fd,
+                        mk: m.s.mk,
+                        dd_delta: m.s.dd_delta,
                         conf: m.s.conf || "-"
                     });
                 });
@@ -1165,6 +1181,13 @@ function ScoreMapEditor() {
                         kills: m.s.k,
                         deaths: m.s.d,
                         assists: m.s.a,
+                        adr: m.s.adr,
+                        kast: m.s.kast,
+                        hs_pct: m.s.hs_pct,
+                        fk: m.s.fk,
+                        fd: m.s.fd,
+                        mk: m.s.mk,
+                        dd_delta: m.s.dd_delta,
                         conf: m.s.conf || "-"
                     });
                 });
@@ -1241,11 +1264,18 @@ function ScoreMapEditor() {
                 acs: r.acs,
                 kills: r.kills,
                 deaths: r.deaths,
-                assists: r.assists
+                assists: r.assists,
+                adr: r.adr,
+                kast: r.kast,
+                hs_pct: r.hs_pct,
+                fk: r.fk,
+                fd: r.fd,
+                mk: r.mk,
+                dd_delta: r.dd_delta
             })), {
                 pendingId: pendingId || undefined,
                 url: window.localStorage.getItem('auto_selected_match_url') || undefined
-            });
+            }, roundsData, playerRoundsData);
 
             window.localStorage.removeItem('auto_selected_match_id');
             window.localStorage.removeItem('pending_match_db_id');

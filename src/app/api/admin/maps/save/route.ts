@@ -16,7 +16,7 @@ function isAuthorized(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json();
-  const { matchId, mapData, playerStats, meta } = body || {};
+  const { matchId, mapData, playerStats, meta, rounds, playerRounds } = body || {};
   if (!matchId || !mapData) return NextResponse.json({ error: 'bad request' }, { status: 400 });
   // Enforce map index cap based on match format
   const { data: fmtMatch } = await supabaseServer.from('matches').select('format').eq('id', matchId).single();
@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
   await Promise.all([
     supabaseServer.from('match_maps').delete().eq('match_id', matchId).eq('map_index', mapData.index),
     supabaseServer.from('match_stats_map').delete().eq('match_id', matchId).eq('map_index', mapData.index),
+    supabaseServer.from('match_rounds').delete().eq('match_id', matchId).eq('map_index', mapData.index),
+    supabaseServer.from('match_player_rounds').delete().eq('match_id', matchId).eq('map_index', mapData.index),
   ]);
   {
     const { error } = await supabaseServer.from('match_maps').insert({
@@ -55,9 +57,49 @@ export async function POST(req: NextRequest) {
         kills: s.kills,
         deaths: s.deaths,
         assists: s.assists,
+        adr: s.adr,
+        kast: s.kast,
+        hs_pct: s.hs_pct,
+        fk: s.fk,
+        fd: s.fd,
+        mk: s.mk,
+        dd_delta: s.dd_delta
       })),
     );
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  // Insert rounds data
+  if (Array.isArray(rounds) && rounds.length > 0) {
+    await supabaseServer.from('match_rounds').insert(
+      rounds.map((r: any) => ({
+        match_id: matchId,
+        map_index: mapData.index,
+        round_number: r.round_number,
+        winning_team_id: r.winning_team_id,
+        win_type: r.win_type,
+        plant: r.plant,
+        defuse: r.defuse,
+        economy_t1: r.economy_t1,
+        economy_t2: r.economy_t2
+      }))
+    );
+  }
+
+  // Insert player rounds data
+  if (Array.isArray(playerRounds) && playerRounds.length > 0) {
+    await supabaseServer.from('match_player_rounds').insert(
+      playerRounds.map((pr: any) => ({
+        match_id: matchId,
+        map_index: mapData.index,
+        round_number: pr.round_number,
+        player_id: pr.player_id,
+        kills: pr.kills,
+        damage: pr.damage,
+        weapon: pr.weapon,
+        spent: pr.spent
+      }))
+    );
   }
   const [{ data: allMaps }, { data: matchInfo }] = await Promise.all([
     supabaseServer.from('match_maps').select('winner_id').eq('match_id', matchId),

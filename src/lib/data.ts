@@ -64,6 +64,8 @@ export type PlayerStats = {
         avgAcs: number;
         kd: number;
         kpr: number;
+        avgAdr?: number;
+        avgKast?: number;
         winRate: number;
         matches: number;
     };
@@ -76,6 +78,9 @@ export type PlayerStats = {
         kills: number;
         deaths: number;
         assists: number;
+        adr?: number;
+        kast?: number;
+        hs_pct?: number;
         result: 'win' | 'loss' | 'draw';
         is_sub?: boolean;
         subbed_for_id?: number | null;
@@ -107,6 +112,7 @@ export type PendingPlayer = {
 
 /**
  * Parse Tracker JSON into suggestions compatible with admin editor workflow
+ * Now extracts detailed stats like ADR, KAST, HS%, and round-by-round data.
  */
 export function parseTrackerJson(
     js: any,
@@ -116,17 +122,35 @@ export function parseTrackerJson(
     roster2Rids?: string[],
     mapIndex: number = 0
 ): {
-    suggestions: Record<string, { team_num: 1 | 2; name?: string; agent?: string; acs: number; k: number; d: number; a: number; conf?: string }>;
+    suggestions: Record<string, {
+        team_num: 1 | 2;
+        name?: string;
+        agent?: string;
+        acs: number; k: number; d: number; a: number;
+        adr?: number;
+        kast?: number;
+        hs_pct?: number;
+        fk?: number;
+        fd?: number;
+        mk?: number;
+        dd_delta?: number;
+        conf?: string
+    }>;
     map_name: string;
     t1_rounds: number;
     t2_rounds: number;
+    rounds: any[];
+    playerRounds: any[];
 } {
     try {
         const suggestions: Record<string, any> = {};
+        const rounds: any[] = [];
+        const playerRoundsArr: any[] = [];
         const lower = (x: any) => String(x || "").trim().toLowerCase();
         const data = js?.data || {};
         const segments: any[] = Array.isArray(data?.segments) ? data.segments : [];
 
+        // 1. Determine Tracker's Team 1 ID
         let trackerTeam1Id: string | number | null = null;
         const teamSegs = segments.filter(s => s?.type === "team-summary");
         if (teamSegs.length >= 2 && roster1Rids && roster1Rids.length > 0) {
@@ -141,19 +165,86 @@ export function parseTrackerJson(
             trackerTeam1Id = teamSegs[0]?.attributes?.teamId ?? null;
         }
 
+        // 2. Extract Aggregate Player Stats
         segments.filter(s => s?.type === "player-summary").forEach(p => {
             const ridRaw = p?.metadata?.platformInfo?.platformUserIdentifier;
             const rid = lower(ridRaw);
             if (!rid) return;
             const agent = p?.metadata?.agentName;
             const st = p?.stats || {};
+
             const acs = Number(st?.scorePerRound?.value ?? 0);
             const k = Number(st?.kills?.value ?? 0);
             const d = Number(st?.deaths?.value ?? 0);
             const a = Number(st?.assists?.value ?? 0);
+
+            // Detailed Stats
+            const adr = Number(st?.damagePerRound?.value ?? 0);
+            const kast = Number(st?.kast?.value ?? 0);
+            const hs_pct = Number(st?.hsAccuracy?.value ?? 0);
+            const fk = Number(st?.firstKills?.value ?? 0);
+            const fd = Number(st?.firstDeaths?.value ?? 0);
+            const mk = Number(st?.tripleKills?.value ?? 0) + Number(st?.quadraKills?.value ?? 0) + Number(st?.pentaKills?.value ?? 0);
+            const dd_delta = Number(st?.damageDeltaPerRound?.value ?? 0);
+
             const tId = p?.metadata?.teamId;
             const team_num = tId === trackerTeam1Id ? 1 : 2;
-            suggestions[rid] = { team_num, agent, acs, k, d, a };
+
+            suggestions[rid] = {
+                team_num, agent, acs, k, d, a,
+                adr, kast, hs_pct, fk, fd, mk, dd_delta
+            };
+        });
+
+        // 3. Extract Round Summary & Economy
+        const roundSummaries = segments.filter(s => s?.type === "round-summary");
+        const playerRounds = segments.filter(s => s?.type === "player-round");
+
+        roundSummaries.forEach(rs => {
+            const rNum = Number(rs?.attributes?.round ?? 0);
+            const winTeamRaw = rs?.stats?.winningTeam?.value;
+            const winning_team_id = winTeamRaw === trackerTeam1Id ? team1_id : team2_id;
+
+            // Calculate economy for this round
+            let econT1 = 0;
+            let econT2 = 0;
+            playerRounds.filter(pr => Number(pr?.attributes?.round) === rNum).forEach(pr => {
+                const teamId = pr?.metadata?.teamId;
+                const value = Number(pr?.stats?.spentCredits?.value ?? 0);
+                if (teamId === trackerTeam1Id) econT1 += value;
+                else econT2 += value;
+            });
+
+            rounds.push({
+                round_number: rNum,
+                winning_team_id,
+                win_type: rs?.stats?.roundResult?.value || "Elimination",
+                plant: rs?.metadata?.plant !== null,
+                defuse: rs?.metadata?.defuse !== null,
+                economy_t1: econT1,
+                economy_t2: econT2
+            });
+        });
+
+        // 4. Extract Per-Round Player Data
+        playerRounds.forEach(pr => {
+            const rid = lower(pr?.attributes?.platformUserIdentifier);
+            if (!rid) return;
+            const rNum = Number(pr?.attributes?.round ?? 0);
+            const kills = Number(pr?.stats?.kills?.value ?? 0);
+            const damage = Number(pr?.stats?.damage?.value ?? 0);
+            const spent = Number(pr?.stats?.spentCredits?.value ?? 0);
+
+            // Find weapon for this round if possible (usually in player-round-weapon or similar)
+            // For now, we'll leave weapon as null or attempt to find first kill weapon
+            playerRoundsArr.push({
+                rid,
+                round_number: rNum,
+                kills,
+                damage,
+                spent,
+                weapon: null
+            });
         });
 
         let map_name = lower(data?.metadata?.mapName || data?.metadata?.map || "");
@@ -171,9 +262,9 @@ export function parseTrackerJson(
         t1_rounds = Number(r1?.stats?.roundsWon?.value ?? 0);
         t2_rounds = Number(r2?.stats?.roundsWon?.value ?? 0);
 
-        return { suggestions, map_name, t1_rounds, t2_rounds };
+        return { suggestions, map_name, t1_rounds, t2_rounds, rounds, playerRounds: playerRoundsArr };
     } catch {
-        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0 };
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [] };
     }
 }
 
@@ -220,6 +311,8 @@ export type TeamPerformance = {
         name: string;
         avgAcs: number;
         kd: number;
+        avgAdr?: number;
+        avgKast?: number;
         matches: number;
     }[];
     maps: {
@@ -549,6 +642,8 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
                     avgAcs: 0,
                     kd: 0,
                     kpr: 0,
+                    avgAdr: 0,
+                    avgKast: 0,
                     winRate: 0,
                     matches: 0
                 },
@@ -600,8 +695,10 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
             const mapInfo = mapMetadataMap.get(`${s.match_id}-${s.map_index || 0}`);
             const rounds = (mapInfo?.team1_rounds || 0) + (mapInfo?.team2_rounds || 0);
 
-            const w = weekStats.get(week) || { acs: [], kills: 0, deaths: 0, rounds: 0 };
+            const w = weekStats.get(week) || { acs: [], kills: 0, deaths: 0, rounds: 0, adr: [], kast: [] };
             w.acs.push(s.acs || 0);
+            w.adr.push(s.adr || 0);
+            w.kast.push(s.kast || 0);
             w.kills += s.kills || 0;
             w.deaths += s.deaths || 0;
             w.rounds += rounds;
@@ -640,6 +737,9 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
                 kills: s.kills,
                 deaths: s.deaths,
                 assists: s.assists,
+                adr: s.adr,
+                kast: s.kast,
+                hs_pct: s.hs_pct,
                 result,
                 is_sub: Boolean(s.is_sub),
                 subbed_for_id: s.subbed_for_id || null,
@@ -719,6 +819,8 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
                 avgAcs: performance.length > 0 ? Math.round(performance.reduce((acc, curr) => acc + curr.acs, 0) / performance.length) : 0,
                 kd: totalStatsDeaths > 0 ? Number((totalStatsKills / totalStatsDeaths).toFixed(2)) : totalStatsKills,
                 kpr: totalRounds > 0 ? Number((totalStatsKills / totalRounds).toFixed(2)) : 0,
+                avgAdr: stats && stats.length > 0 ? Math.round(stats.reduce((acc: number, curr: any) => acc + (curr.adr || 0), 0) / stats.length) : 0,
+                avgKast: stats && stats.length > 0 ? Math.round(stats.reduce((acc: number, curr: any) => acc + (curr.kast || 0), 0) / stats.length) : 0,
                 winRate: matchIds.length > 0 ? Math.round((winsByMatch.size / matchIds.length) * 100) : 0,
                 matches: matchIds.length
             },
@@ -800,7 +902,7 @@ export async function getTeamPerformance(teamId: number): Promise<TeamPerformanc
             supabase.from('match_maps').select('*').in('match_id', matchIds),
             supabase
                 .from('match_stats_map')
-                .select('match_id,map_index,team_id,player_id,acs,kills,deaths,assists,agent,is_sub,subbed_for_id')
+                .select('match_id,map_index,team_id,player_id,acs,kills,deaths,assists,agent,is_sub,subbed_for_id,adr,kast')
                 .in('match_id', matchIds),
             supabase.from('players').select('id,name,default_team_id')
         ]);
@@ -914,8 +1016,10 @@ export async function getTeamPerformance(teamId: number): Promise<TeamPerformanc
             const pInfo = playerLookup.get(s.player_id);
             const playerName = pInfo?.name || 'Unknown';
 
-            const current = pStats.get(s.player_id) || { name: playerName, acs: [] as number[], kills: 0, deaths: 0, matches: new Set<number>() };
+            const current = pStats.get(s.player_id) || { name: playerName, acs: [] as number[], adr: [] as number[], kast: [] as number[], kills: 0, deaths: 0, matches: new Set<number>() };
             current.acs.push(s.acs || 0);
+            current.adr.push(s.adr || 0);
+            current.kast.push(s.kast || 0);
             current.kills += s.kills || 0;
             current.deaths += s.deaths || 0;
             current.matches.add(s.match_id);
@@ -933,6 +1037,8 @@ export async function getTeamPerformance(teamId: number): Promise<TeamPerformanc
                     name: data.name,
                     avgAcs: acsAvg,
                     kd: kdVal,
+                    avgAdr: data.adr.length > 0 ? Math.round(data.adr.reduce((a: number, b: number) => a + b, 0) / data.adr.length) : 0,
+                    avgKast: data.kast.length > 0 ? Math.round(data.kast.reduce((a: number, b: number) => a + b, 0) / data.kast.length) : 0,
                     matches: data.matches.size
                 };
             })
@@ -1523,6 +1629,22 @@ export async function getMatchDetails(matchId: number): Promise<{
             kills: number;
             deaths: number;
             assists: number;
+            adr?: number;
+            kast?: number;
+            hs_pct?: number;
+            fk?: number;
+            fd?: number;
+            mk?: number;
+            dd_delta?: number;
+        }>;
+        rounds: Array<{
+            round_number: number;
+            winning_team_id: number;
+            win_type: string;
+            plant: boolean;
+            defuse: boolean;
+            economy_t1: number;
+            economy_t2: number;
         }>;
     }>;
 }> {
@@ -1547,10 +1669,17 @@ export async function getMatchDetails(matchId: number): Promise<{
 
         const { data: stats, error: statsErr } = await supabase
             .from('match_stats_map')
-            .select('match_id,map_index,team_id,player_id,is_sub,subbed_for_id,agent,acs,kills,deaths,assists')
+            .select('match_id,map_index,team_id,player_id,is_sub,subbed_for_id,agent,acs,kills,deaths,assists,adr,kast,hs_pct,fk,fd,mk,dd_delta')
             .eq('match_id', matchId)
             .order('map_index', { ascending: true });
         if (statsErr) throw new Error(statsErr.message || JSON.stringify(statsErr));
+
+        const { data: roundsData, error: roundsErr } = await supabase
+            .from('match_rounds')
+            .select('*')
+            .eq('match_id', matchId)
+            .order('round_number', { ascending: true });
+        if (roundsErr) throw new Error(roundsErr.message || JSON.stringify(roundsErr));
 
         const playerIds = Array.from(new Set((stats || []).map((s: any) => s.player_id)));
         const { data: pinfo, error: pErr } = await supabase
@@ -1562,6 +1691,7 @@ export async function getMatchDetails(matchId: number): Promise<{
 
         const mapsOut = (maps || []).map((mm: any) => {
             const mapStats = (stats || []).filter((s: any) => s.map_index === mm.map_index);
+            const mapRounds = (roundsData || []).filter((r: any) => r.map_index === mm.map_index);
             return {
                 index: mm.map_index,
                 name: mm.map_name,
@@ -1579,7 +1709,23 @@ export async function getMatchDetails(matchId: number): Promise<{
                     acs: s.acs || 0,
                     kills: s.kills || 0,
                     deaths: s.deaths || 0,
-                    assists: s.assists || 0
+                    assists: s.assists || 0,
+                    adr: s.adr || 0,
+                    kast: s.kast || 0,
+                    hs_pct: s.hs_pct || 0,
+                    fk: s.fk || 0,
+                    fd: s.fd || 0,
+                    mk: s.mk || 0,
+                    dd_delta: s.dd_delta || 0
+                })),
+                rounds: mapRounds.map((r: any) => ({
+                    round_number: r.round_number,
+                    winning_team_id: r.winning_team_id,
+                    win_type: r.win_type,
+                    plant: r.plant,
+                    defuse: r.defuse,
+                    economy_t1: r.economy_t1,
+                    economy_t2: r.economy_t2
                 }))
             };
         });
@@ -1625,15 +1771,24 @@ export async function saveMapResults(
         acs: number,
         kills: number,
         deaths: number,
-        assists: number
+        assists: number,
+        adr?: number,
+        kast?: number,
+        hs_pct?: number,
+        fk?: number,
+        fd?: number,
+        mk?: number,
+        dd_delta?: number
     }[],
-    meta?: { pendingId?: number, url?: string }
+    meta?: { pendingId?: number, url?: string },
+    rounds?: any[],
+    playerRounds?: any[]
 ): Promise<boolean> {
     try {
         const res = await fetch('/api/admin/maps/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matchId, mapData, playerStats, meta })
+            body: JSON.stringify({ matchId, mapData, playerStats, meta, rounds, playerRounds })
         } as any);
         if (!res.ok) throw new Error(await res.text());
         return true;

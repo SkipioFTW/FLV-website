@@ -52,7 +52,7 @@ export default function SummaryPage() {
                 onChange={e => setSelectedWeek(parseInt(e.target.value))}
                 className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
               >
-                {[1,2,3,4,5,6].map(w => <option key={w} value={w}>Week {w}</option>)}
+                {[1, 2, 3, 4, 5, 6].map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
             </div>
             <div className="md:col-span-2">
@@ -106,6 +106,34 @@ export default function SummaryPage() {
                     {details.match.team1.name}: {map.t1_rounds} • {details.match.team2.name}: {map.t2_rounds} {map.is_forfeit ? "• Forfeit" : ""}
                   </div>
                 </div>
+
+                {/* Round-by-round progression */}
+                <div className="flex flex-wrap gap-1 p-2 bg-white/5 rounded border border-white/5">
+                  {map.rounds?.map((r: any) => (
+                    <div
+                      key={r.round_number}
+                      className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded ${r.winning_team_id === details.match.team1.id ? "bg-val-blue text-white" : "bg-val-red text-white"
+                        }`}
+                      title={`Round ${r.round_number}: ${r.win_type}${r.plant ? " (Plant)" : ""}${r.defuse ? " (Defuse)" : ""}`}
+                    >
+                      {r.round_number}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Economy indicator */}
+                <div className="grid grid-cols-2 gap-4 h-1 items-end">
+                  <div className="flex justify-end gap-0.5">
+                    {map.rounds?.map((r: any) => (
+                      <div key={r.round_number} style={{ height: `${Math.min(r.economy_t1 / 500, 20)}px` }} className="w-1 bg-val-blue/30 rounded-t" />
+                    ))}
+                  </div>
+                  <div className="flex justify-start gap-0.5">
+                    {map.rounds?.map((r: any) => (
+                      <div key={r.round_number} style={{ height: `${Math.min(r.economy_t2 / 500, 20)}px` }} className="w-1 bg-val-red/30 rounded-t" />
+                    ))}
+                  </div>
+                </div>
                 <div className="grid md:grid-cols-2 gap-8">
                   {[details.match.team1, details.match.team2].map((team, idx) => {
                     const rows = map.stats.filter((s: any) => s.team_id === team.id);
@@ -113,28 +141,30 @@ export default function SummaryPage() {
                       <div key={team.id} className="glass p-6 border border-white/5 rounded">
                         <h5 className="font-display text-lg font-bold uppercase tracking-wider mb-4">{team.name} Scoreboard</h5>
                         <div className="space-y-3">
-                          <div className="grid grid-cols-8 gap-3 text-[10px] font-black uppercase tracking-widest text-foreground/40">
-                            <div>Player</div>
-                            <div>Sub</div>
+                          <div className="grid grid-cols-11 gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/40">
+                            <div className="col-span-2">Player</div>
                             <div>Agent</div>
                             <div>ACS</div>
                             <div>K</div>
                             <div>D</div>
                             <div>A</div>
-                            <div>SF</div>
+                            <div>ADR</div>
+                            <div>KAST</div>
+                            <div>HS%</div>
+                            <div>Sub</div>
                           </div>
                           {rows.map((r: any, i: number) => (
-                            <div key={`${r.player_id}-${i}`} className="grid grid-cols-8 gap-3 items-center">
-                              <a href={`/players?player_id=${r.player_id}`} className="hover:text-val-blue underline text-sm truncate max-w-[180px]">{r.player_name}</a>
-                              <div className={`text-xs ${r.is_sub ? 'text-val-red' : 'text-foreground/60'}`}>{r.is_sub ? "Sub" : "-"}</div>
-                              <div className="text-xs text-foreground/80">{r.agent}</div>
-                              <div className="text-xs text-val-blue">{Math.round(r.acs)}</div>
-                              <div className="text-xs">{r.kills}</div>
-                              <div className="text-xs text-val-red">{r.deaths}</div>
-                              <div className="text-xs">{r.assists}</div>
-                              <div className="text-xs truncate max-w-[160px]">
-                                {r.subbed_for_id ? rows.find((x: any) => x.player_id === r.subbed_for_id)?.player_name || "-" : "-"}
-                              </div>
+                            <div key={`${r.player_id}-${i}`} className="grid grid-cols-11 gap-2 items-center text-[11px]">
+                              <a href={`/players?player_id=${r.player_id}`} className="col-span-2 hover:text-val-blue underline truncate">{r.player_name}</a>
+                              <div className="text-foreground/80">{r.agent}</div>
+                              <div className="text-val-blue font-bold">{Math.round(r.acs)}</div>
+                              <div>{r.kills}</div>
+                              <div className="text-val-red">{r.deaths}</div>
+                              <div>{r.assists}</div>
+                              <div>{Math.round(r.adr)}</div>
+                              <div>{Math.round(r.kast)}%</div>
+                              <div>{Math.round(r.hs_pct)}%</div>
+                              <div className={`${r.is_sub ? 'text-val-red' : 'text-foreground/20'}`}>{r.is_sub ? "Sub" : "-"}</div>
                             </div>
                           ))}
                         </div>

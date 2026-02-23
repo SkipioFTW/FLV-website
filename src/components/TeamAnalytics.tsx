@@ -138,7 +138,9 @@ export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
                                         <tr className="bg-white/5 text-xs font-bold uppercase tracking-widest text-foreground/40">
                                             <th className="px-6 py-4">Player</th>
                                             <th className="px-6 py-4 text-center">Avg ACS</th>
+                                            <th className="px-6 py-4 text-center">ADR</th>
                                             <th className="px-6 py-4 text-center">K/D Ratio</th>
+                                            <th className="px-6 py-4 text-center">KAST</th>
                                             <th className="px-6 py-4 text-center">Maps Played</th>
                                         </tr>
                                     </thead>
@@ -154,9 +156,11 @@ export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-center font-display font-medium text-val-blue text-lg">{p.avgAcs}</td>
+                                                <td className="px-6 py-4 text-center font-medium text-val-yellow">{p.avgAdr}</td>
                                                 <td className="px-6 py-4 text-center font-medium">
                                                     <span className={p.kd >= 1 ? 'text-val-blue' : 'text-val-red'}>{p.kd}</span>
                                                 </td>
+                                                <td className="px-6 py-4 text-center font-medium">{p.avgKast}%</td>
                                                 <td className="px-6 py-4 text-center text-foreground/60">{p.matches}</td>
                                             </tr>
                                         ))}

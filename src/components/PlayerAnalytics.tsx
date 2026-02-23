@@ -95,7 +95,7 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                                 </div>
                             </div>
                         </div>
-                        
+
                         {/* Agent/Map Win Rates */}
                         <div className="grid lg:grid-cols-2 gap-8">
                             <div className="glass rounded-xl p-6 border border-white/5">
@@ -131,9 +131,11 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                         </div>
 
                         {/* Summary Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
                             <StatCard label="Avg ACS" value={stats.summary.avgAcs} color="text-val-red" />
                             <StatCard label="K/D Ratio" value={stats.summary.kd} color="text-val-blue" />
+                            <StatCard label="ADR" value={stats.summary.avgAdr ?? 0} color="text-val-yellow" />
+                            <StatCard label="KAST" value={`${stats.summary.avgKast ?? 0}%`} color="text-val-blue" />
                             <StatCard label="Kills / Round" value={stats.summary.kpr} color="text-val-yellow" />
                             <StatCard label="Matches" value={stats.summary.matches} color="text-foreground" />
                             <StatCard label="Top Agent" value={stats.agents[0]?.name || 'N/A'} color="text-val-red" />
@@ -264,7 +266,10 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                                                 <th className="px-6 py-4">Opponent</th>
                                                 <th className="px-6 py-4">Map</th>
                                                 <th className="px-6 py-4 text-center">ACS</th>
+                                                <th className="px-6 py-4 text-center">ADR</th>
                                                 <th className="px-6 py-4 text-center">K/D/A</th>
+                                                <th className="px-6 py-4 text-center">KAST</th>
+                                                <th className="px-6 py-4 text-center">HS%</th>
                                                 <th className="px-6 py-4 text-center">Sub</th>
                                             </tr>
                                         </thead>
@@ -282,9 +287,12 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                                                     <td className="px-6 py-4 font-bold text-sm">{match.opponent}</td>
                                                     <td className="px-6 py-4 text-foreground/60 text-sm italic">{match.map}</td>
                                                     <td className="px-6 py-4 text-center font-display font-bold text-val-blue">{match.acs}</td>
+                                                    <td className="px-6 py-4 text-center text-sm">{Math.round(match.adr || 0)}</td>
                                                     <td className="px-6 py-4 text-center text-sm font-medium">
                                                         {match.kills} / <span className="text-val-red">{match.deaths}</span> / {match.assists}
                                                     </td>
+                                                    <td className="px-6 py-4 text-center text-sm">{Math.round(match.kast || 0)}%</td>
+                                                    <td className="px-6 py-4 text-center text-sm">{Math.round(match.hs_pct || 0)}%</td>
                                                     <td className="px-6 py-4 text-center text-xs">
                                                         {match.is_sub ? (
                                                             <span className="px-2 py-1 rounded bg-white/10">

@@ -63,5 +63,36 @@ export type MatchStatMap = {
     deaths: number;
     assists: number;
     kast?: number;
+    adr?: number;
+    hs_pct?: number;
+    fk?: number;
+    fd?: number;
+    mk?: number;
+    dd_delta?: number;
     is_sub?: boolean;
+};
+
+export type MatchRound = {
+    id: string;
+    match_id: number;
+    map_index: number;
+    round_number: number;
+    winning_team_id: number;
+    win_type: string;
+    plant: boolean;
+    defuse: boolean;
+    economy_t1: number;
+    economy_t2: number;
+};
+
+export type MatchPlayerRound = {
+    id: string;
+    match_id: number;
+    map_index: number;
+    round_number: number;
+    player_id: number;
+    kills: number;
+    damage: number;
+    weapon: string;
+    spent: number;
 };
