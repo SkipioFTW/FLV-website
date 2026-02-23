@@ -200,6 +200,9 @@ export type MatchEntry = {
     format: 'BO1' | 'BO3' | 'BO5';
     maps_played: number;
     timestamp?: string;
+    match_type?: 'regular' | 'playoff';
+    playoff_round?: number;
+    bracket_pos?: number;
 };
 
 export type TeamPerformance = {
@@ -1160,10 +1163,14 @@ export async function getAllMatches(): Promise<MatchEntry[]> {
                 winner_id,
                 score_t1,
                 score_t2,
+                match_type,
+                playoff_round,
+                bracket_pos,
                 team1:teams!team1_id(id, name, tag, logo_path),
                 team2:teams!team2_id(id, name, tag, logo_path)
             `)
             .order('week', { ascending: false })
+            .order('playoff_round', { ascending: false })
             .order('id', { ascending: false });
 
         if (error) throw error;
@@ -1200,6 +1207,9 @@ export async function getAllMatches(): Promise<MatchEntry[]> {
                 format: m.format,
                 maps_played: m.maps_played,
                 winner_id: m.winner_id ?? null,
+                match_type: m.match_type,
+                playoff_round: m.playoff_round,
+                bracket_pos: m.bracket_pos,
                 team1,
                 team2,
             };

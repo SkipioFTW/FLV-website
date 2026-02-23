@@ -594,12 +594,15 @@ function ScheduleManager({
                                 <th className="py-2 pr-4">Team 1</th>
                                 <th className="py-2 pr-4">Team 2</th>
                                 <th className="py-2 pr-4">Format</th>
+                                <th className="py-2 pr-4">Type</th>
+                                <th className="py-2 pr-4">R</th>
+                                <th className="py-2 pr-4">Pos</th>
                                 <th className="py-2">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {displayMatches.length === 0 ? (
-                                <tr><td colSpan={7} className="py-6 text-center text-foreground/30 text-xs font-bold uppercase tracking-widest">No scheduled matches</td></tr>
+                                <tr><td colSpan={10} className="py-6 text-center text-foreground/30 text-xs font-bold uppercase tracking-widest">No scheduled matches</td></tr>
                             ) : displayMatches.map(m => (
                                 <tr key={m.id} className="hover:bg-white/5 transition-colors">
                                     <td className="py-2 pr-4 font-mono text-xs text-foreground/50">#{m.id}</td>
@@ -608,6 +611,13 @@ function ScheduleManager({
                                     <td className="py-2 pr-4 text-xs font-bold">{m.team1.name}</td>
                                     <td className="py-2 pr-4 text-xs font-bold">{m.team2.name}</td>
                                     <td className="py-2 pr-4 text-[10px] font-black text-foreground/50">{m.format}</td>
+                                    <td className="py-2 pr-4 text-[10px] font-black uppercase">
+                                        <span className={m.match_type === 'playoff' ? 'text-val-red' : 'text-val-blue'}>
+                                            {m.match_type || 'regular'}
+                                        </span>
+                                    </td>
+                                    <td className="py-2 pr-4 text-[10px] font-black text-foreground/50">{m.playoff_round || '-'}</td>
+                                    <td className="py-2 pr-4 text-[10px] font-black text-foreground/50">{m.bracket_pos || '-'}</td>
                                     <td className="py-2">
                                         <button
                                             onClick={() => handleDeleteMatch(m.id)}
@@ -650,12 +660,24 @@ function PlayoffBracketEditor({
         import('@/lib/data').then(({ getStandings }) => {
             getStandings().then(gs => {
                 const opts: Array<{ id: number, name: string, tag: string, group_name: string }> = [];
-                Array.from(gs.entries()).forEach(([group, rows]) => {
-                    rows.slice(0, 2).forEach(r => {
-                        opts.push({ id: r.id, name: r.name, tag: r.tag || '', group_name: group });
+                const autoByes: Array<number | null> = Array.from({ length: 8 }, () => null);
+
+                // Collect top 2 from each group
+                const groups = Array.from(gs.keys()).sort();
+                groups.forEach((group, gIdx) => {
+                    const rows = gs.get(group) || [];
+                    rows.slice(0, 2).forEach((r, rIdx) => {
+                        const team = { id: r.id, name: r.name, tag: r.tag || '', group_name: group };
+                        opts.push(team);
+
+                        // Heuristic for seeding (G1#1->Pos1, G1#2->Pos2, G2#1->Pos3, etc.)
+                        const pos = (gIdx * 2) + rIdx;
+                        if (pos < 8) autoByes[pos] = r.id;
                     });
                 });
                 setByeOptions(opts);
+                // Only auto-populate if currently empty
+                setRound2Byes(prev => prev.every(v => v === null) ? autoByes : prev);
             });
         });
         try {
@@ -700,11 +722,38 @@ function PlayoffBracketEditor({
         }
     };
 
+    const unassigned = matches.filter(m => !m.bracket_pos);
+
     return (
         <section className="space-y-6">
-            <h2 className="font-display text-xl font-black text-val-blue uppercase italic">
-                Playoff Bracket Editor
-            </h2>
+            <div className="flex justify-between items-center">
+                <h2 className="font-display text-xl font-black text-val-blue uppercase italic">
+                    Playoff Bracket Editor
+                </h2>
+                {unassigned.length > 0 && (
+                    <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-val-red animate-pulse">
+                            ⚠️ {unassigned.length} Unassigned Matches
+                        </span>
+                        <button
+                            onClick={async () => {
+                                if (!confirm(`Delete ${unassigned.length} matches missing bracket positions?`)) return;
+                                for (const m of unassigned) {
+                                    await fetch('/api/admin/matches/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ id: m.id })
+                                    } as any);
+                                }
+                                onUpdate();
+                            }}
+                            className="px-3 py-1 bg-val-red/10 hover:bg-val-red text-val-red hover:text-white text-[8px] font-black uppercase tracking-widest rounded transition-all"
+                        >
+                            Purge Unassigned
+                        </button>
+                    </div>
+                )}
+            </div>
             <div className="glass p-4 rounded border border-white/5">
                 <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-3">
@@ -836,8 +885,13 @@ function PlayoffBracketEditor({
                                 }
                                 return (
                                     <div key={`${round.id}-${pos}`} className="glass p-4 border border-white/5 rounded space-y-3">
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">
-                                            Match #{match.id}
+                                        <div className="flex justify-between items-center">
+                                            <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">
+                                                Match #{match.id}
+                                            </div>
+                                            {round.id === 2 && !match.team2.id && (
+                                                <span className="text-[8px] font-black uppercase tracking-widest text-val-blue/60 bg-val-blue/10 px-1.5 py-0.5 rounded-sm">BYE Slot</span>
+                                            )}
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 items-center">
                                             <div>
