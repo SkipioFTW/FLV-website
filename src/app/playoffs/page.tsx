@@ -23,13 +23,6 @@ export default async function PlayoffsPage() {
             <Navbar />
 
             <main className="flex-1 w-full px-6 py-32 overflow-x-auto">
-                {!flags.playoffs_public ? (
-                    <div className="max-w-3xl mx-auto text-center glass p-12 rounded border border-white/5">
-                        <h2 className="font-display text-3xl font-black italic text-val-blue uppercase tracking-widest mb-3">Playoffs Locked</h2>
-                        <p className="text-foreground/60">Playoff bracket will be revealed after the regular season concludes.</p>
-                    </div>
-                ) : (
-                <>
                 <header className="max-w-7xl mx-auto w-full mb-12">
                     <h1 className="font-display text-4xl md:text-6xl font-black italic text-val-red uppercase tracking-tighter mb-4 text-center">
                         Championship Brackets
@@ -116,9 +109,8 @@ export default async function PlayoffsPage() {
                         </div>
                     ))}
                 </div>
-                </>
-                )}
             </main>
         </div>
     );
 }
+

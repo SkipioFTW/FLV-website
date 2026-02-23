@@ -109,72 +109,72 @@ export type PendingPlayer = {
  * Parse Tracker JSON into suggestions compatible with admin editor workflow
  */
 export function parseTrackerJson(
-  js: any,
-  team1_id: number,
-  team2_id: number,
-  roster1Rids?: string[],
-  roster2Rids?: string[],
-  mapIndex: number = 0
+    js: any,
+    team1_id: number,
+    team2_id: number,
+    roster1Rids?: string[],
+    roster2Rids?: string[],
+    mapIndex: number = 0
 ): {
-  suggestions: Record<string, { team_num: 1 | 2; name?: string; agent?: string; acs: number; k: number; d: number; a: number; conf?: string }>;
-  map_name: string;
-  t1_rounds: number;
-  t2_rounds: number;
+    suggestions: Record<string, { team_num: 1 | 2; name?: string; agent?: string; acs: number; k: number; d: number; a: number; conf?: string }>;
+    map_name: string;
+    t1_rounds: number;
+    t2_rounds: number;
 } {
-  try {
-    const suggestions: Record<string, any> = {};
-    const lower = (x: any) => String(x || "").trim().toLowerCase();
-    const data = js?.data || {};
-    const segments: any[] = Array.isArray(data?.segments) ? data.segments : [];
+    try {
+        const suggestions: Record<string, any> = {};
+        const lower = (x: any) => String(x || "").trim().toLowerCase();
+        const data = js?.data || {};
+        const segments: any[] = Array.isArray(data?.segments) ? data.segments : [];
 
-    let trackerTeam1Id: string | number | null = null;
-    const teamSegs = segments.filter(s => s?.type === "team-summary");
-    if (teamSegs.length >= 2 && roster1Rids && roster1Rids.length > 0) {
-      const candidate = teamSegs[0]?.attributes?.teamId;
-      let matchCount = 0;
-      segments.filter(s => s?.type === "player-summary" && s?.metadata?.teamId === candidate).forEach(p => {
-        const rid = lower(p?.metadata?.platformInfo?.platformUserIdentifier);
-        if (rid && roster1Rids.includes(rid)) matchCount += 1;
-      });
-      trackerTeam1Id = matchCount >= 1 ? candidate : teamSegs[1]?.attributes?.teamId;
-    } else {
-      trackerTeam1Id = teamSegs[0]?.attributes?.teamId ?? null;
+        let trackerTeam1Id: string | number | null = null;
+        const teamSegs = segments.filter(s => s?.type === "team-summary");
+        if (teamSegs.length >= 2 && roster1Rids && roster1Rids.length > 0) {
+            const candidate = teamSegs[0]?.attributes?.teamId;
+            let matchCount = 0;
+            segments.filter(s => s?.type === "player-summary" && s?.metadata?.teamId === candidate).forEach(p => {
+                const rid = lower(p?.metadata?.platformInfo?.platformUserIdentifier);
+                if (rid && roster1Rids.includes(rid)) matchCount += 1;
+            });
+            trackerTeam1Id = matchCount >= 1 ? candidate : teamSegs[1]?.attributes?.teamId;
+        } else {
+            trackerTeam1Id = teamSegs[0]?.attributes?.teamId ?? null;
+        }
+
+        segments.filter(s => s?.type === "player-summary").forEach(p => {
+            const ridRaw = p?.metadata?.platformInfo?.platformUserIdentifier;
+            const rid = lower(ridRaw);
+            if (!rid) return;
+            const agent = p?.metadata?.agentName;
+            const st = p?.stats || {};
+            const acs = Number(st?.scorePerRound?.value ?? 0);
+            const k = Number(st?.kills?.value ?? 0);
+            const d = Number(st?.deaths?.value ?? 0);
+            const a = Number(st?.assists?.value ?? 0);
+            const tId = p?.metadata?.teamId;
+            const team_num = tId === trackerTeam1Id ? 1 : 2;
+            suggestions[rid] = { team_num, agent, acs, k, d, a };
+        });
+
+        let map_name = lower(data?.metadata?.mapName || data?.metadata?.map || "");
+        if (!map_name) {
+            map_name = lower(teamSegs[0]?.metadata?.mapName || "");
+        }
+        if (!map_name) map_name = "unknown";
+        map_name = map_name.charAt(0).toUpperCase() + map_name.slice(1);
+
+        // Extract rounds per team if available
+        let t1_rounds = 0;
+        let t2_rounds = 0;
+        const r1 = teamSegs.find(s => s?.attributes?.teamId === trackerTeam1Id);
+        const r2 = teamSegs.find(s => s?.attributes?.teamId !== trackerTeam1Id);
+        t1_rounds = Number(r1?.stats?.roundsWon?.value ?? 0);
+        t2_rounds = Number(r2?.stats?.roundsWon?.value ?? 0);
+
+        return { suggestions, map_name, t1_rounds, t2_rounds };
+    } catch {
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0 };
     }
-
-    segments.filter(s => s?.type === "player-summary").forEach(p => {
-      const ridRaw = p?.metadata?.platformInfo?.platformUserIdentifier;
-      const rid = lower(ridRaw);
-      if (!rid) return;
-      const agent = p?.metadata?.agentName;
-      const st = p?.stats || {};
-      const acs = Number(st?.scorePerRound?.value ?? 0);
-      const k = Number(st?.kills?.value ?? 0);
-      const d = Number(st?.deaths?.value ?? 0);
-      const a = Number(st?.assists?.value ?? 0);
-      const tId = p?.metadata?.teamId;
-      const team_num = tId === trackerTeam1Id ? 1 : 2;
-      suggestions[rid] = { team_num, agent, acs, k, d, a };
-    });
-
-    let map_name = lower(data?.metadata?.mapName || data?.metadata?.map || "");
-    if (!map_name) {
-      map_name = lower(teamSegs[0]?.metadata?.mapName || "");
-    }
-    if (!map_name) map_name = "unknown";
-    map_name = map_name.charAt(0).toUpperCase() + map_name.slice(1);
-
-    // Extract rounds per team if available
-    let t1_rounds = 0;
-    let t2_rounds = 0;
-    const r1 = teamSegs.find(s => s?.attributes?.teamId === trackerTeam1Id);
-    const r2 = teamSegs.find(s => s?.attributes?.teamId !== trackerTeam1Id);
-    t1_rounds = Number(r1?.stats?.roundsWon?.value ?? 0);
-    t2_rounds = Number(r2?.stats?.roundsWon?.value ?? 0);
-
-    return { suggestions, map_name, t1_rounds, t2_rounds };
-  } catch {
-    return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0 };
-  }
 }
 
 export type MatchEntry = {
@@ -1901,4 +1901,60 @@ export async function getTeamsBasic(): Promise<{ id: number, name: string, tag: 
         console.error('Error fetching basic teams:', error);
         return [];
     }
+}
+
+/**
+ * Get count of remaining (scheduled) matches for each team
+ */
+export async function getRemainingMatchesCounts(): Promise<Map<number, number>> {
+    try {
+        const { data: matches, error } = await supabase
+            .from('matches')
+            .select('team1_id, team2_id')
+            .eq('status', 'scheduled');
+
+        if (error) throw error;
+        const counts = new Map<number, number>();
+        (matches || []).forEach(m => {
+            if (m.team1_id) counts.set(m.team1_id, (counts.get(m.team1_id) || 0) + 1);
+            if (m.team2_id) counts.set(m.team2_id, (counts.get(m.team2_id) || 0) + 1);
+        });
+        return counts;
+    } catch (e) {
+        console.error('Error fetching remaining counts:', e);
+        return new Map();
+    }
+}
+
+/**
+ * Annotate teams with elimination status based on current standings
+ */
+export async function annotateElimination(standings: StandingsRow[]): Promise<(StandingsRow & { eliminated: boolean, remaining: number })[]> {
+    const remainingMap = await getRemainingMatchesCounts();
+    const grouped = new Map<string, StandingsRow[]>();
+    standings.forEach(s => {
+        const arr = grouped.get(s.group_name) || [];
+        arr.push(s);
+        grouped.set(s.group_name, arr);
+    });
+
+    const out: (StandingsRow & { eliminated: boolean, remaining: number })[] = [];
+    for (const [groupName, groupTeams] of grouped.entries()) {
+        const sorted = [...groupTeams].sort((a, b) => {
+            if (b.Points !== a.Points) return b.Points - a.Points;
+            return b.PD - a.PD;
+        });
+
+        const sixthPts = sorted.length >= 6 ? sorted[5].Points : 0;
+        sorted.forEach(t => {
+            const rem = remainingMap.get(t.id) || 0;
+            const maxPts = t.Points + (rem * 15);
+            out.push({
+                ...t,
+                remaining: rem,
+                eliminated: maxPts < sixthPts
+            });
+        });
+    }
+    return out;
 }
