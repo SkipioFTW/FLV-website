@@ -1257,6 +1257,13 @@ export async function getPlayoffMatches(): Promise<PlayoffMatch[]> {
 
         if (error) throw error;
 
+        const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const toLogoUrl = (path: string | null) => {
+            if (!path) return null;
+            if (path.startsWith('http://') || path.startsWith('https://')) return path;
+            return baseUrl ? `${baseUrl}/storage/v1/object/public/${path.replace(/^\/+/, '')}` : null;
+        };
+
         return (matches || []).map((m: any) => ({
             id: m.id,
             week: m.week,
@@ -1272,14 +1279,14 @@ export async function getPlayoffMatches(): Promise<PlayoffMatch[]> {
                 id: m.team1?.id || 0,
                 name: m.team1?.name || (m.bracket_label?.split('vs')[0]?.trim() || 'TBD'),
                 tag: m.team1?.tag || 'TBD',
-                logo: m.team1?.logo_path || null,
+                logo: toLogoUrl(m.team1?.logo_path || null),
                 score: m.score_t1
             },
             team2: {
                 id: m.team2?.id || 0,
                 name: m.team2?.name || (m.bracket_label?.split('vs')[1]?.trim() || 'TBD'),
                 tag: m.team2?.tag || 'TBD',
-                logo: m.team2?.logo_path || null,
+                logo: toLogoUrl(m.team2?.logo_path || null),
                 score: m.score_t2
             }
         }));
