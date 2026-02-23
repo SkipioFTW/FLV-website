@@ -32,6 +32,10 @@ export type LeaderboardPlayer = {
     total_deaths: number;
     total_assists: number;
     kd_ratio: number;
+    avg_adr: number;
+    avg_kast: number;
+    avg_hs_pct: number;
+    total_fk: number;
 };
 
 export type PlayerStats = {
@@ -520,7 +524,7 @@ export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardP
         while (true) {
             const { data, error } = await supabase
                 .from('match_stats_map')
-                .select('player_id, acs, kills, deaths, assists, match_id')
+                .select('player_id, acs, kills, deaths, assists, match_id, adr, kast, hs_pct, fk')
                 .range(sFrom, sFrom + sLimit - 1);
 
             if (error) throw error;
@@ -537,8 +541,13 @@ export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardP
             totalKills: number;
             totalDeaths: number;
             totalAssists: number;
+            totalAdr: number;
+            totalKast: number;
+            totalHsPct: number;
+            totalFk: number;
             matchIds: Set<number>;
             mapCount: number;
+            enhancedMapCount: number; // for adr/kast/hs which might be null for some old matches
         }>();
 
         allStats.forEach((stat) => {
@@ -550,16 +559,29 @@ export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardP
                 totalKills: 0,
                 totalDeaths: 0,
                 totalAssists: 0,
+                totalAdr: 0,
+                totalKast: 0,
+                totalHsPct: 0,
+                totalFk: 0,
                 matchIds: new Set<number>(),
                 mapCount: 0,
+                enhancedMapCount: 0,
             };
 
             existing.totalAcs += stat.acs || 0;
             existing.totalKills += stat.kills || 0;
             existing.totalDeaths += stat.deaths || 0;
             existing.totalAssists += stat.assists || 0;
+            existing.totalFk += stat.fk || 0;
             existing.matchIds.add(stat.match_id);
             existing.mapCount += 1;
+
+            if (stat.adr !== null && stat.adr !== undefined) {
+                existing.totalAdr += stat.adr;
+                existing.totalKast += stat.kast || 0;
+                existing.totalHsPct += stat.hs_pct || 0;
+                existing.enhancedMapCount += 1;
+            }
 
             playerStatsMap.set(stat.player_id, existing);
         });
@@ -585,6 +607,10 @@ export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardP
                     total_deaths: pStats.totalDeaths,
                     total_assists: pStats.totalAssists,
                     kd_ratio: pStats.totalDeaths > 0 ? parseFloat((pStats.totalKills / pStats.totalDeaths).toFixed(2)) : pStats.totalKills,
+                    avg_adr: pStats.enhancedMapCount > 0 ? Math.round(pStats.totalAdr / pStats.enhancedMapCount) : 0,
+                    avg_kast: pStats.enhancedMapCount > 0 ? Math.round(pStats.totalKast / pStats.enhancedMapCount) : 0,
+                    avg_hs_pct: pStats.enhancedMapCount > 0 ? Math.round(pStats.totalHsPct / pStats.enhancedMapCount) : 0,
+                    total_fk: pStats.totalFk,
                 };
             })
             .filter((p): p is LeaderboardPlayer => p !== null)

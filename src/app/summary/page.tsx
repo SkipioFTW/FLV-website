@@ -141,7 +141,7 @@ export default function SummaryPage() {
                       <div key={team.id} className="glass p-6 border border-white/5 rounded">
                         <h5 className="font-display text-lg font-bold uppercase tracking-wider mb-4">{team.name} Scoreboard</h5>
                         <div className="space-y-3">
-                          <div className="grid grid-cols-11 gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/40">
+                          <div className="grid grid-cols-12 gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/40">
                             <div className="col-span-2">Player</div>
                             <div>Agent</div>
                             <div>ACS</div>
@@ -151,10 +151,11 @@ export default function SummaryPage() {
                             <div>ADR</div>
                             <div>KAST</div>
                             <div>HS%</div>
+                            <div>FK</div>
                             <div>Sub</div>
                           </div>
                           {rows.map((r: any, i: number) => (
-                            <div key={`${r.player_id}-${i}`} className="grid grid-cols-11 gap-2 items-center text-[11px]">
+                            <div key={`${r.player_id}-${i}`} className="grid grid-cols-12 gap-2 items-center text-[11px]">
                               <a href={`/players?player_id=${r.player_id}`} className="col-span-2 hover:text-val-blue underline truncate">{r.player_name}</a>
                               <div className="text-foreground/80">{r.agent}</div>
                               <div className="text-val-blue font-bold">{Math.round(r.acs)}</div>
@@ -164,6 +165,7 @@ export default function SummaryPage() {
                               <div>{Math.round(r.adr)}</div>
                               <div>{Math.round(r.kast)}%</div>
                               <div>{Math.round(r.hs_pct)}%</div>
+                              <div className="text-val-blue font-bold">{r.fk || 0}</div>
                               <div className={`${r.is_sub ? 'text-val-red' : 'text-foreground/20'}`}>{r.is_sub ? "Sub" : "-"}</div>
                             </div>
                           ))}
