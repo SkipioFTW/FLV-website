@@ -191,12 +191,36 @@ export function parseTrackerJson(
             const mk = Number(st?.tripleKills?.value ?? 0) + Number(st?.quadraKills?.value ?? 0) + Number(st?.pentaKills?.value ?? 0);
             const dd_delta = Number(st?.damageDeltaPerRound?.value ?? 0);
 
+            // Deep Data Stats
+            const plants = Number(st?.plants?.value ?? 0);
+            const defuses = Number(st?.defuses?.value ?? 0);
+            const survived = Number(st?.survived?.value ?? 0);
+            const traded = Number(st?.traded?.value ?? 0);
+            const clutches = Number(st?.clutches?.value ?? 0);
+
+            const clutches_details = {
+                v1: Number(st?.clutches1v1?.value ?? 0),
+                v2: Number(st?.clutches1v2?.value ?? 0),
+                v3: Number(st?.clutches1v3?.value ?? 0),
+                v4: Number(st?.clutches1v4?.value ?? 0),
+                v5: Number(st?.clutches1v5?.value ?? 0),
+            };
+
+            const ability_casts = {
+                grenade: Number(st?.grenadeCasts?.value ?? 0),
+                ability1: Number(st?.ability1Casts?.value ?? 0),
+                ability2: Number(st?.ability2Casts?.value ?? 0),
+                ultimate: Number(st?.ultimateCasts?.value ?? 0),
+            };
+
             const tId = p?.metadata?.teamId;
             const team_num = tId === trackerTeam1Id ? 1 : 2;
 
             suggestions[rid] = {
                 team_num, agent, acs, k, d, a,
-                adr, kast, hs_pct, fk, fd, mk, dd_delta
+                adr, kast, hs_pct, fk, fd, mk, dd_delta,
+                plants, defuses, survived, traded, clutches,
+                clutches_details, ability_casts
             };
         });
 
@@ -482,7 +506,7 @@ export async function getStandings(): Promise<Map<string, StandingsRow[]>> {
  * Fetch player leaderboard stats
  * Replicates production SQL logic: includes unique matches where status is 'completed'
  */
-export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardPlayer[]> {
+export async function getLeaderboard(minGames: number = 0, matchType?: 'group' | 'playoff'): Promise<LeaderboardPlayer[]> {
     try {
         // 1. Fetch all players and teams for lookup
         const [playersRes, teamsRes] = await Promise.all([
@@ -504,11 +528,16 @@ export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardP
         let mFrom = 0;
         const mLimit = 1000;
         while (true) {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('matches')
                 .select('id')
-                .eq('status', 'completed')
-                .range(mFrom, mFrom + mLimit - 1);
+                .eq('status', 'completed');
+
+            if (matchType) {
+                query = query.eq('match_type', matchType);
+            }
+
+            const { data, error } = await query.range(mFrom, mFrom + mLimit - 1);
 
             if (error) throw error;
             if (!data || data.length === 0) break;
@@ -625,7 +654,7 @@ export async function getLeaderboard(minGames: number = 0): Promise<LeaderboardP
 /**
  * Fetch detailed stats for a specific player
  */
-export async function getPlayerStats(playerId: number): Promise<PlayerStats | null> {
+export async function getPlayerStats(playerId: number, matchType?: 'group' | 'playoff'): Promise<PlayerStats | null> {
     try {
         // 1. Fetch player info
         const { data: player, error: playerError } = await supabase
@@ -647,13 +676,24 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
             if (team) teamTag = team.tag;
         }
 
-        // 3. Fetch all match stats for this player
-        const { data: stats, error: statsError } = await supabase
+        // 3. First fetch matches based on matchType filter
+        let matchQuery = supabase.from('matches').select('id');
+        if (matchType) {
+            matchQuery = matchQuery.eq('match_type', matchType);
+        }
+        const { data: filterMatches } = await matchQuery;
+        const filterMatchIds = (filterMatches || []).map(m => m.id);
+
+        // 3.5 Fetch all match stats for this player
+        const { data: allStats, error: statsError } = await supabase
             .from('match_stats_map')
             .select('*')
             .eq('player_id', playerId);
 
         if (statsError) throw statsError;
+
+        // Filter stats to only include allowed matches
+        const stats = matchType ? (allStats || []).filter(s => filterMatchIds.includes(s.match_id)) : allStats;
 
         const matchIds = [...new Set((stats || []).map(s => s.match_id))];
         if (matchIds.length === 0) {
@@ -891,7 +931,7 @@ export async function getPlayers(): Promise<{ id: number; name: string; riot_id:
 /**
  * Fetch detailed performance stats for a specific team
  */
-export async function getTeamPerformance(teamId: number): Promise<TeamPerformance | null> {
+export async function getTeamPerformance(teamId: number, matchType?: 'group' | 'playoff'): Promise<TeamPerformance | null> {
     try {
         // 1. Fetch team info
         const { data: team, error: teamError } = await supabase
@@ -903,10 +943,16 @@ export async function getTeamPerformance(teamId: number): Promise<TeamPerformanc
         if (teamError || !team) throw teamError || new Error('Team not found');
 
         // 2. Fetch matches for this team
-        const { data: matches, error: matchesError } = await supabase
+        let matchQuery = supabase
             .from('matches')
             .select('*')
             .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`);
+
+        if (matchType) {
+            matchQuery = matchQuery.eq('match_type', matchType);
+        }
+
+        const { data: matches, error: matchesError } = await matchQuery;
 
         if (matchesError) throw matchesError;
 
@@ -1120,13 +1166,18 @@ export type SubstitutionAnalytics = {
 /**
  * Fetch substitution analytics
  */
-export async function getSubstitutionAnalytics(): Promise<SubstitutionAnalytics> {
+export async function getSubstitutionAnalytics(matchType?: 'group' | 'playoff'): Promise<SubstitutionAnalytics> {
     try {
         // 1. Fetch data
+        let matchQuery = supabase.from('matches').select('*').eq('status', 'completed');
+        if (matchType) {
+            matchQuery = matchQuery.eq('match_type', matchType);
+        }
+
         const [teams, players, matches, stats, mapData] = await Promise.all([
             supabase.from('teams').select('id, name').order('name'),
             supabase.from('players').select('id, name, default_team_id'),
-            supabase.from('matches').select('*').eq('status', 'completed'),
+            matchQuery,
             supabase.from('match_stats_map').select('*').eq('is_sub', 1),
             supabase.from('match_maps').select('*')
         ]);
@@ -1662,6 +1713,13 @@ export async function getMatchDetails(matchId: number): Promise<{
             fd?: number;
             mk?: number;
             dd_delta?: number;
+            plants?: number;
+            defuses?: number;
+            survived?: number;
+            traded?: number;
+            clutches?: number;
+            clutches_details?: any;
+            ability_casts?: any;
         }>;
         rounds: Array<{
             round_number: number;
@@ -1695,7 +1753,7 @@ export async function getMatchDetails(matchId: number): Promise<{
 
         const { data: stats, error: statsErr } = await supabase
             .from('match_stats_map')
-            .select('match_id,map_index,team_id,player_id,is_sub,subbed_for_id,agent,acs,kills,deaths,assists,adr,kast,hs_pct,fk,fd,mk,dd_delta')
+            .select('*')
             .eq('match_id', matchId)
             .order('map_index', { ascending: true });
         if (statsErr) throw new Error(statsErr.message || JSON.stringify(statsErr));
@@ -1742,7 +1800,14 @@ export async function getMatchDetails(matchId: number): Promise<{
                     fk: s.fk || 0,
                     fd: s.fd || 0,
                     mk: s.mk || 0,
-                    dd_delta: s.dd_delta || 0
+                    dd_delta: s.dd_delta || 0,
+                    plants: s.plants || 0,
+                    defuses: s.defuses || 0,
+                    survived: s.survived || 0,
+                    traded: s.traded || 0,
+                    clutches: s.clutches || 0,
+                    clutches_details: s.clutches_details || null,
+                    ability_casts: s.ability_casts || null
                 })),
                 rounds: mapRounds.map((r: any) => ({
                     round_number: r.round_number,

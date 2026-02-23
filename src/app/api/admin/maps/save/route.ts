@@ -63,7 +63,14 @@ export async function POST(req: NextRequest) {
         fk: s.fk,
         fd: s.fd,
         mk: s.mk,
-        dd_delta: s.dd_delta
+        dd_delta: s.dd_delta,
+        plants: s.plants,
+        defuses: s.defuses,
+        survived: s.survived,
+        traded: s.traded,
+        clutches: s.clutches,
+        clutches_details: s.clutches_details,
+        ability_casts: s.ability_casts
       })),
     );
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });

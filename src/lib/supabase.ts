@@ -70,6 +70,13 @@ export type MatchStatMap = {
     mk?: number;
     dd_delta?: number;
     is_sub?: boolean;
+    plants?: number;
+    defuses?: number;
+    survived?: number;
+    traded?: number;
+    clutches?: number;
+    clutches_details?: any;
+    ability_casts?: any;
 };
 
 export type MatchRound = {
