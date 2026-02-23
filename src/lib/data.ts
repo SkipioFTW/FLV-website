@@ -1614,7 +1614,10 @@ export async function saveMapResults(
 
 /**
  * Advance playoff bracket when a match updates to completed.
- * Fills seeded next-round slots and pairs winners from sibling matches.
+ *
+ * 24-team bracket format:
+ *   Round 1 (Play-ins, 8 matches): winners advance 1-to-1 to R2 same bracket_pos
+ *   Round 2+ (16→QF→SF→F): winners pair as siblings (pos 1&2→1, 3&4→2, etc.)
  */
 export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void> {
     try {
@@ -1630,81 +1633,89 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
         const pos: number = m.bracket_pos || 0;
         if (!pos) return;
 
-        // If next-round seeded match exists at same pos, fill the empty slot
-        const { data: nextMatch } = await supabase
-            .from('matches')
-            .select('*')
-            .eq('match_type', 'playoff')
-            .eq('playoff_round', round + 1)
-            .eq('bracket_pos', pos)
-            .limit(1);
-        if (nextMatch && nextMatch.length > 0) {
-            const nm = nextMatch[0];
-            const updates: any = {};
-            if (!nm.team1_id) updates.team1_id = winnerTeam;
-            else if (!nm.team2_id) updates.team2_id = winnerTeam;
-            if (updates.team1_id || updates.team2_id) {
-                await updateMatch(nm.id, updates);
-            }
-        } else {
-            // Create seeded next match if none exists yet (place winner on team2 to wait for BYE or sibling result)
-            await supabase.from('matches').insert({
-                week: m.week || 0,
-                group_name: 'Playoffs',
-                team1_id: null,
-                team2_id: winnerTeam,
-                status: 'scheduled',
-                format: 'BO3',
-                maps_played: 0,
-                match_type: 'playoff',
-                playoff_round: round + 1,
-                bracket_pos: pos,
-                bracket_label: `R${round + 1} #${pos}`
-            } as any);
-        }
-
-        // If sibling in same round is completed, pair winners into next-next round
-        const siblingPos = pos % 2 === 1 ? pos + 1 : pos - 1;
-        const { data: sibling } = await supabase
-            .from('matches')
-            .select('id, winner_id, status, playoff_round, bracket_pos, week')
-            .eq('match_type', 'playoff')
-            .eq('playoff_round', round)
-            .eq('bracket_pos', siblingPos)
-            .limit(1);
-        if (sibling && sibling.length > 0 && sibling[0].status === 'completed' && sibling[0].winner_id) {
-            const w1 = winnerTeam;
-            const w2 = sibling[0].winner_id as number;
-            const nextRound = round + 1;
-            const targetPos = Math.ceil(Math.min(pos, siblingPos) / 2);
-            const { data: r3Match } = await supabase
+        if (round === 1) {
+            // ── R1 → R2: 1-to-1 mapping (play-in winner fills the empty slot at same bracket_pos in R2)
+            const { data: r2Match } = await supabase
                 .from('matches')
                 .select('*')
                 .eq('match_type', 'playoff')
-                .eq('playoff_round', nextRound)
-                .eq('bracket_pos', targetPos)
+                .eq('playoff_round', 2)
+                .eq('bracket_pos', pos)
                 .limit(1);
-            if (r3Match && r3Match.length > 0) {
-                const mm = r3Match[0];
-                const upd: any = {};
-                if (!mm.team1_id) upd.team1_id = w1;
-                if (!mm.team2_id) upd.team2_id = w2;
-                if (upd.team1_id || upd.team2_id) await updateMatch(mm.id, upd);
+            if (r2Match && r2Match.length > 0) {
+                const nm = r2Match[0];
+                const updates: any = {};
+                if (!nm.team2_id) updates.team2_id = winnerTeam;       // BYE seed is team1, play-in winner is team2
+                else if (!nm.team1_id) updates.team1_id = winnerTeam;  // fallback
+                if (updates.team1_id || updates.team2_id) {
+                    await updateMatch(nm.id, updates);
+                }
             } else {
+                // Create R2 match if it doesn't exist (winner waits for BYE seed)
                 await supabase.from('matches').insert({
                     week: m.week || 0,
                     group_name: 'Playoffs',
-                    team1_id: w1,
-                    team2_id: w2,
+                    team1_id: null,
+                    team2_id: winnerTeam,
                     status: 'scheduled',
                     format: 'BO3',
                     maps_played: 0,
                     match_type: 'playoff',
-                    playoff_round: nextRound,
-                    bracket_pos: targetPos,
-                    bracket_label: `R${nextRound} #${targetPos}`
+                    playoff_round: 2,
+                    bracket_pos: pos,
+                    bracket_label: `R2 #${pos}`
                 } as any);
             }
+        } else {
+            // ── R2+ → next round: sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.)
+            const siblingPos = pos % 2 === 1 ? pos + 1 : pos - 1;
+            const targetPos = Math.ceil(Math.min(pos, siblingPos) / 2);
+            const nextRound = round + 1;
+
+            const { data: sibling } = await supabase
+                .from('matches')
+                .select('id, winner_id, status, playoff_round, bracket_pos, week')
+                .eq('match_type', 'playoff')
+                .eq('playoff_round', round)
+                .eq('bracket_pos', siblingPos)
+                .limit(1);
+
+            if (sibling && sibling.length > 0 && sibling[0].status === 'completed' && sibling[0].winner_id) {
+                // Both siblings completed — pair winners into next round
+                const lowerPosWinner = pos < siblingPos ? winnerTeam : sibling[0].winner_id as number;
+                const upperPosWinner = pos < siblingPos ? sibling[0].winner_id as number : winnerTeam;
+
+                const { data: nextMatch } = await supabase
+                    .from('matches')
+                    .select('*')
+                    .eq('match_type', 'playoff')
+                    .eq('playoff_round', nextRound)
+                    .eq('bracket_pos', targetPos)
+                    .limit(1);
+
+                if (nextMatch && nextMatch.length > 0) {
+                    const nm = nextMatch[0];
+                    const upd: any = {};
+                    if (!nm.team1_id) upd.team1_id = lowerPosWinner;
+                    if (!nm.team2_id) upd.team2_id = upperPosWinner;
+                    if (upd.team1_id || upd.team2_id) await updateMatch(nm.id, upd);
+                } else {
+                    await supabase.from('matches').insert({
+                        week: m.week || 0,
+                        group_name: 'Playoffs',
+                        team1_id: lowerPosWinner,
+                        team2_id: upperPosWinner,
+                        status: 'scheduled',
+                        format: 'BO3',
+                        maps_played: 0,
+                        match_type: 'playoff',
+                        playoff_round: nextRound,
+                        bracket_pos: targetPos,
+                        bracket_label: `R${nextRound} #${targetPos}`
+                    } as any);
+                }
+            }
+            // else: sibling not yet completed, nothing to do — wait for the other match
         }
     } catch (e) {
         console.error('Error advancing bracket:', e);
@@ -1754,38 +1765,40 @@ export async function computeBracketAdvancements(): Promise<BracketAction[]> {
             const key = `${m.playoff_round || 0}:${m.bracket_pos || 0}`;
             byRoundPos.set(key, m);
         });
-        // 1) Seed-facing: completed winners to same pos in next round (fill ONLY the empty BYE slot)
-        (matches || []).filter((m: any) => m.status === 'completed').forEach((m: any) => {
+
+        // 1) R1 → R2: play-in winner fills the empty slot at same bracket_pos in R2
+        (matches || []).filter((m: any) => m.status === 'completed' && (m.playoff_round || 0) === 1).forEach((m: any) => {
             const winId = deriveWinner(m);
             if (!winId) return;
-            const round = m.playoff_round || 1;
             const pos = m.bracket_pos || 0;
             if (!pos) return;
-            const nextKey = `${round + 1}:${pos}`;
+            const nextKey = `2:${pos}`;
             const nm = byRoundPos.get(nextKey);
             const winnerName = teamMap.get(winId) || `Team ${winId}`;
             if (nm) {
                 const t1 = nm.team1_id;
                 const t2 = nm.team2_id;
-                const exactlyOneFilled = (t1 && !t2) || (!t1 && t2);
-                if (exactlyOneFilled) {
+                // Only fill if exactly one slot is empty (BYE seed occupies one side)
+                if ((t1 && !t2) || (!t1 && t2)) {
                     actions.push({
                         kind: 'fill',
-                        target_round: round + 1,
+                        target_round: 2,
                         bracket_pos: pos,
                         match_id: nm.id,
                         team1_id: t1 ? t1 : winId,
                         team2_id: t1 ? winId : t2,
-                        title: `R${round + 1} #${pos}: ${teamMap.get(t1) || 'TBD'} vs ${teamMap.get(t2) || 'TBD'}`,
-                        reason: `Fill BYE slot with winner ${winnerName}`
+                        title: `R2 #${pos}: ${teamMap.get(t1) || 'TBD'} vs ${teamMap.get(t2) || 'TBD'}`,
+                        reason: `Fill BYE slot with play-in winner ${winnerName}`
                     });
                 }
             }
         });
-        // 2) Pair sibling winners into next round pos = ceil(min(p1,p2)/2)
+
+        // 2) R2+ → next round: sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.)
         const perRound = new Map<number, any[]>();
         (matches || []).forEach(m => {
             const r = m.playoff_round || 0;
+            if (r < 2) return; // skip R1
             const arr = perRound.get(r) || [];
             arr.push(m);
             perRound.set(r, arr);
@@ -1801,28 +1814,25 @@ export async function computeBracketAdvancements(): Promise<BracketAction[]> {
                     const w1 = deriveWinner(a);
                     const w2 = deriveWinner(b);
                     if (!w1 || !w2) continue;
-                    const targetPos = Math.ceil(Math.min(p, p + 1) / 2);
+                    const targetPos = Math.ceil(p / 2);
                     const nextKey = `${round + 1}:${targetPos}`;
                     const nm = byRoundPos.get(nextKey);
                     const t1Name = teamMap.get(w1) || `Team ${w1}`;
                     const t2Name = teamMap.get(w2) || `Team ${w2}`;
                     if (nm) {
-                        const t1f = nm.team1_id;
-                        const t2f = nm.team2_id;
-                        const upd: any = {
-                            team1_id: t1f || w1,
-                            team2_id: t2f || w2
-                        };
-                        actions.push({
-                            kind: 'fill',
-                            target_round: round + 1,
-                            bracket_pos: targetPos,
-                            match_id: nm.id,
-                            team1_id: upd.team1_id,
-                            team2_id: upd.team2_id,
-                            title: `R${round + 1} #${targetPos}: ${teamMap.get(upd.team1_id) || 'TBD'} vs ${teamMap.get(upd.team2_id) || 'TBD'}`,
-                            reason: `Pair sibling winners ${t1Name} vs ${t2Name}`
-                        });
+                        // Only propose if slots are still empty
+                        if (!nm.team1_id || !nm.team2_id) {
+                            actions.push({
+                                kind: 'fill',
+                                target_round: round + 1,
+                                bracket_pos: targetPos,
+                                match_id: nm.id,
+                                team1_id: nm.team1_id || w1,
+                                team2_id: nm.team2_id || w2,
+                                title: `R${round + 1} #${targetPos}: ${t1Name} vs ${t2Name}`,
+                                reason: `Pair sibling winners ${t1Name} vs ${t2Name}`
+                            });
+                        }
                     } else {
                         actions.push({
                             kind: 'create',
