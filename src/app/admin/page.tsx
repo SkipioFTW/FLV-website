@@ -11,7 +11,9 @@ import {
     getPlayoffMatches,
     updateMatch,
     saveMapResults,
-    parseTrackerJson
+    parseTrackerJson,
+    getDashboardStats,
+    type GlobalStats
 } from "@/lib/data";
 import { clearMatchDetails } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
@@ -24,6 +26,7 @@ export default function AdminPage() {
     const [matches, setMatches] = useState<MatchEntry[]>([]);
     const [playoffMatches, setPlayoffMatches] = useState<PlayoffMatch[]>([]);
     const [teams, setTeams] = useState<{ id: number, name: string, tag: string, group_name: string }[]>([]);
+    const [stats, setStats] = useState<GlobalStats>({ activeTeams: 0, matchesPlayed: 0, livePlayers: 0, totalPoints: 0 });
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);
     const [authLoading, setAuthLoading] = useState(true);
@@ -47,16 +50,18 @@ export default function AdminPage() {
                 return;
             }
             setLoading(true);
-            const [p, m, t, pm] = await Promise.all([
+            const [p, m, t, pm, s] = await Promise.all([
                 getPendingRequests(),
                 getAllMatches(),
                 getTeamsBasic(),
-                getPlayoffMatches()
+                getPlayoffMatches(),
+                getDashboardStats()
             ]);
             setPending(p);
             setMatches(m);
             setTeams(t);
             setPlayoffMatches(pm);
+            setStats(s);
             setLoading(false);
         };
         loadData();
@@ -177,7 +182,7 @@ export default function AdminPage() {
                 <section className="grid md:grid-cols-4 gap-6 mb-8">
                     <div className="custom-card glass p-6 text-center rounded">
                         <h4 className="text-val-blue mb-1">LIVE USERS</h4>
-                        <div className="font-display text-3xl">{/* Placeholder: use global stats livePlayers */}</div>
+                        <div className="font-display text-3xl">{stats.livePlayers}</div>
                         <div className="text-foreground/40 text-xs">Currently on website</div>
                     </div>
                     <div className="custom-card glass p-6 text-center rounded">

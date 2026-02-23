@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Orbitron, Montserrat } from "next/font/google";
 import "./globals.css";
+import ActivityTracker from "@/components/ActivityTracker";
 
 const orbitron = Orbitron({
   variable: "--font-orbitron",
@@ -31,6 +32,7 @@ export default function RootLayout({
         className={`${orbitron.variable} ${montserrat.variable} antialiased selection:bg-val-red selection:text-white`}
       >
         <div className="relative min-h-screen">
+          <ActivityTracker />
           {/* Main Content */}
           <main className="relative z-10">
             {children}

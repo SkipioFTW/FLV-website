@@ -1958,3 +1958,42 @@ export async function annotateElimination(standings: StandingsRow[]): Promise<(S
     }
     return out;
 }
+/**
+ * Get dashboard stats for the admin panel
+ */
+export async function getDashboardStats(): Promise<GlobalStats> {
+    try {
+        const fiveMinsAgo = Math.floor(Date.now() / 1000) - 300;
+
+        const [teamsRes, matchesRes, activityRes] = await Promise.all([
+            supabase.from('teams').select('id', { count: 'exact', head: true }),
+            supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
+            supabase.from('session_activity').select('ip_address', { count: 'exact', head: true }).gt('last_activity', fiveMinsAgo)
+        ]);
+
+        return {
+            activeTeams: teamsRes.count || 0,
+            matchesPlayed: matchesRes.count || 0,
+            livePlayers: activityRes.count || 0,
+            totalPoints: 0 // Not strictly needed for dashboard top card
+        };
+    } catch (e) {
+        console.error('Error fetching dashboard stats:', e);
+        return { activeTeams: 0, matchesPlayed: 0, livePlayers: 1, totalPoints: 0 };
+    }
+}
+
+/**
+ * Update session activity for live user count
+ */
+export async function updateSessionActivity(ip: string) {
+    try {
+        const now = Math.floor(Date.now() / 1000);
+        await supabase.from('session_activity').upsert(
+            { ip_address: ip, last_activity: now },
+            { onConflict: 'ip_address' }
+        );
+    } catch (e) {
+        // Silently fail if table doesn't exist or other issues
+    }
+}
