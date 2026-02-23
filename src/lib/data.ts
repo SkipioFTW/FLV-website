@@ -677,7 +677,7 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
         const subForNameMap = new Map((subForPlayers || []).map((p: any) => [p.id, p.name]));
 
         // 6. Process Performance over time (by week)
-        const weekStats = new Map<number, { acs: number[]; kills: number; deaths: number; rounds: number }>();
+        const weekStats = new Map<number, { acs: number[]; adr: number[]; kast: number[]; kills: number; deaths: number; rounds: number }>();
         const agentCounts = new Map<string, number>();
         let totalWins = 0;
         const winsByMatch = new Set<number>();
@@ -695,7 +695,7 @@ export async function getPlayerStats(playerId: number): Promise<PlayerStats | nu
             const mapInfo = mapMetadataMap.get(`${s.match_id}-${s.map_index || 0}`);
             const rounds = (mapInfo?.team1_rounds || 0) + (mapInfo?.team2_rounds || 0);
 
-            const w = weekStats.get(week) || { acs: [], kills: 0, deaths: 0, rounds: 0, adr: [], kast: [] };
+            const w = weekStats.get(week) || { acs: [] as number[], kills: 0, deaths: 0, rounds: 0, adr: [] as number[], kast: [] as number[] };
             w.acs.push(s.acs || 0);
             w.adr.push(s.adr || 0);
             w.kast.push(s.kast || 0);
@@ -1011,7 +1011,7 @@ export async function getTeamPerformance(teamId: number): Promise<TeamPerformanc
             playerLookup.set(p.id, { name: p.name, default_team_id: p.default_team_id ?? null });
         });
 
-        const pStats = new Map<number, { name: string, acs: number[], kills: number, deaths: number, matches: Set<number> }>();
+        const pStats = new Map<number, { name: string, acs: number[], adr: number[], kast: number[], kills: number, deaths: number, matches: Set<number> }>();
         (statsRes.data || []).forEach((s: any) => {
             const pInfo = playerLookup.get(s.player_id);
             const playerName = pInfo?.name || 'Unknown';
