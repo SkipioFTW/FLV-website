@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { getAllMatches, getMatchDetails } from "@/lib/data";
+import EconomyChart from "@/components/EconomyChart";
 
 export default function SummaryPage() {
   const [matches, setMatches] = useState<any[]>([]);
@@ -107,33 +108,11 @@ export default function SummaryPage() {
                   </div>
                 </div>
 
-                {/* Round-by-round progression */}
-                <div className="flex flex-wrap gap-1 p-2 bg-white/5 rounded border border-white/5">
-                  {map.rounds?.map((r: any) => (
-                    <div
-                      key={r.round_number}
-                      className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded ${r.winning_team_id === details.match.team1.id ? "bg-val-blue text-white" : "bg-val-red text-white"
-                        }`}
-                      title={`Round ${r.round_number}: ${r.win_type}${r.plant ? " (Plant)" : ""}${r.defuse ? " (Defuse)" : ""}`}
-                    >
-                      {r.round_number}
-                    </div>
-                  ))}
+                {/* Economy and Round Chart */}
+                <div className="w-full mt-8 mb-8">
+                  <EconomyChart rounds={map.rounds || []} team1_id={details.match.team1.id} />
                 </div>
 
-                {/* Economy indicator */}
-                <div className="grid grid-cols-2 gap-4 h-1 items-end">
-                  <div className="flex justify-end gap-0.5">
-                    {map.rounds?.map((r: any) => (
-                      <div key={r.round_number} style={{ height: `${Math.min(r.economy_t1 / 500, 20)}px` }} className="w-1 bg-val-blue/30 rounded-t" />
-                    ))}
-                  </div>
-                  <div className="flex justify-start gap-0.5">
-                    {map.rounds?.map((r: any) => (
-                      <div key={r.round_number} style={{ height: `${Math.min(r.economy_t2 / 500, 20)}px` }} className="w-1 bg-val-red/30 rounded-t" />
-                    ))}
-                  </div>
-                </div>
                 <div className="grid md:grid-cols-2 gap-8">
                   {[details.match.team1, details.match.team2].map((team, idx) => {
                     const rows = map.stats.filter((s: any) => s.team_id === team.id);
