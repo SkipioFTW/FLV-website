@@ -272,8 +272,12 @@ export default function AdminPage() {
                                                         </button>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-4 text-[10px] text-foreground/30 font-medium">
-                                                    <a href={m.url} target="_blank" className="hover:text-val-blue underline truncate">Tracker.gg Link</a>
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-foreground/30 font-medium whitespace-nowrap overflow-hidden">
+                                                    {m.url?.split(/[\s,]+/).filter(Boolean).map((link, idx, arr) => (
+                                                        <a key={idx} href={link} target="_blank" className="hover:text-val-blue underline">
+                                                            Tracker.gg {arr.length > 1 ? `Map ${idx + 1}` : "Link"}
+                                                        </a>
+                                                    ))}
                                                     <span>{new Date(m.timestamp).toLocaleString()}</span>
                                                 </div>
                                             </div>
@@ -1051,8 +1055,7 @@ function ScoreMapEditor() {
             if (mid) setMatchId(parseInt(mid));
             if (wk) setSelectedWeek(parseInt(wk));
             if (url) {
-                const m = url.match(/match\/([A-Za-z0-9\-]+)/);
-                setGhId(m ? m[1] : url.replace(/[^A-Za-z0-9\-]/g, ''));
+                setGhId(url);
             }
             if (pid) setPendingId(parseInt(pid));
             if (fmt && (fmt === 'BO1' || fmt === 'BO3' || fmt === 'BO5')) setFormat(fmt as any);
@@ -1068,11 +1071,22 @@ function ScoreMapEditor() {
             if (jsonText && jsonText.trim()) {
                 json = JSON.parse(jsonText);
             } else if (ghId) {
-                const cleaned = ghId.includes("tracker.gg") ? ghId.match(/match\/([A-Za-z0-9\-]+)/)?.[1] || ghId : ghId.replace(/[^A-Za-z0-9\-]/g, "");
+                // Support multiple links (newline or space separated)
+                const links = ghId.split(/[\n\s,]+/).filter(l => l.trim().length > 0);
+                if (links.length === 0) {
+                    setStatus("Error: No valid links found");
+                    return;
+                }
+
+                // Use the link corresponding to the current map index
+                const targetLink = links[mapIndex] || links[0];
+                const cleaned = targetLink.includes("tracker.gg") ? targetLink.match(/match\/([A-Za-z0-9\-]+)/)?.[1] || targetLink : targetLink.replace(/[^A-Za-z0-9\-]/g, "");
+
+                setStatus(`Fetching data for Map ${mapIndex + 1}...`);
                 const r = await fetch(`/api/github/matches/resolve?mid=${encodeURIComponent(cleaned)}`);
                 if (!r.ok) {
                     const txt = await r.text();
-                    setStatus(`Error: ${txt}`);
+                    setStatus(`Error fetching Map ${mapIndex + 1}: ${txt}`);
                     return;
                 }
                 json = await r.json();
@@ -1256,6 +1270,7 @@ function ScoreMapEditor() {
                             onChange={e => setSelectedWeek(parseInt(e.target.value))}
                             className="bg-white/5 border border-white/10 rounded p-2 text-sm text-white outline-none focus:border-val-red"
                         >
+                            <option value={0} className="bg-background">Playoffs</option>
                             {[1, 2, 3, 4, 5, 6].map(w => <option key={w} value={w} className="bg-background">Week {w}</option>)}
                         </select>
                         <select
@@ -1292,20 +1307,23 @@ function ScoreMapEditor() {
                         </div>
                     </div>
                     <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Tracker URL or ID (Auto-Fill)</label>
-                        <div className="flex gap-2">
-                            <input
+                        <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Series Links (One per map, or space-separated)</label>
+                        <div className="flex flex-col gap-2">
+                            <textarea
                                 value={ghId}
                                 onChange={e => setGhId(e.target.value)}
-                                placeholder="Match ID or tracker.gg URL"
-                                className="flex-1 bg-white/5 border border-white/10 rounded p-2 text-sm text-white outline-none focus:border-val-blue"
+                                placeholder="Paste one or more Tracker.gg URLs here..."
+                                className="w-full h-24 bg-white/5 border border-white/10 rounded p-2 text-xs text-white outline-none focus:border-val-blue resize-none"
                             />
                             <button
                                 onClick={async () => { await applyMatchData(); }}
-                                className="px-4 bg-val-blue text-white font-black uppercase tracking-widest text-[10px] rounded"
+                                className="w-full py-2 bg-val-blue text-white font-black uppercase tracking-widest text-[10px] rounded hover:bg-val-blue/80 transition-colors"
                             >
-                                Apply
+                                Auto-Fill From Links
                             </button>
+                            <div className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">
+                                Hint: Map index 1 will use the 1st link, index 2 the 2nd, etc.
+                            </div>
                         </div>
                     </div>
                     {forfeit && (
