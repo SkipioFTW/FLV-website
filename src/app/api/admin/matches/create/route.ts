@@ -16,10 +16,9 @@ function isAuthorized(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json();
-  const { week, group_name, team1_id, team2_id, status, format, maps_played } = body || {};
   const { data, error } = await supabaseServer
     .from('matches')
-    .insert({ week, group_name, team1_id, team2_id, status, format, maps_played })
+    .insert(body)
     .select('id')
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });

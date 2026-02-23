@@ -203,6 +203,7 @@ export type MatchEntry = {
     match_type?: 'regular' | 'playoff';
     playoff_round?: number;
     bracket_pos?: number;
+    bracket_label?: string | null;
 };
 
 export type TeamPerformance = {
@@ -1166,6 +1167,7 @@ export async function getAllMatches(): Promise<MatchEntry[]> {
                 match_type,
                 playoff_round,
                 bracket_pos,
+                bracket_label,
                 team1:teams!team1_id(id, name, tag, logo_path),
                 team2:teams!team2_id(id, name, tag, logo_path)
             `)
@@ -1397,7 +1399,11 @@ export async function createMatch(match: Omit<MatchEntry, 'id' | 'team1' | 'team
                 team2_id: match.team2_id,
                 status: match.status,
                 format: match.format,
-                maps_played: match.maps_played
+                maps_played: match.maps_played,
+                match_type: match.match_type || (match.group_name === 'Playoffs' ? 'playoff' : 'regular'),
+                playoff_round: match.playoff_round,
+                bracket_pos: match.bracket_pos,
+                bracket_label: match.bracket_label
             })
         } as any);
         if (!res.ok) throw new Error(await res.text());
@@ -1422,6 +1428,10 @@ type MatchUpdate = {
     format?: 'BO1' | 'BO3' | 'BO5';
     maps_played?: number;
     is_forfeit?: boolean;
+    match_type?: 'regular' | 'playoff';
+    playoff_round?: number;
+    bracket_pos?: number;
+    bracket_label?: string;
 };
 export async function updateMatch(id: number, match: MatchUpdate): Promise<boolean> {
     try {
@@ -1457,7 +1467,11 @@ export async function bulkCreateMatches(matches: (Omit<MatchEntry, 'id' | 'team1
             team2_id: m.team2_id,
             status: m.status,
             format: m.format,
-            maps_played: m.maps_played
+            maps_played: m.maps_played,
+            match_type: m.match_type || (m.group_name === 'Playoffs' ? 'playoff' : 'regular'),
+            playoff_round: m.playoff_round,
+            bracket_pos: m.bracket_pos,
+            bracket_label: m.bracket_label
         }));
         const res = await fetch('/api/admin/matches/bulk', {
             method: 'POST',

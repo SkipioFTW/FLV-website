@@ -829,10 +829,13 @@ function PlayoffBracketEditor({
                                             .eq('bracket_pos', i)
                                             .limit(1);
                                         if (existing && existing.length > 0) {
-                                            // update team1 with BYE if provided
-                                            if (byeTeam) {
-                                                await updateMatch(existing[0].id, { team1_id: byeTeam });
-                                            }
+                                            // Ensure existing match has correct playoff metadata (self-healing)
+                                            await updateMatch(existing[0].id, {
+                                                team1_id: byeTeam || existing[0].team1_id,
+                                                match_type: 'playoff',
+                                                playoff_round: 2,
+                                                bracket_pos: i
+                                            });
                                         } else {
                                             await fetch('/api/admin/matches/create', {
                                                 method: 'POST',
