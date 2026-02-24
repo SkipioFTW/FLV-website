@@ -19,7 +19,7 @@ interface Props {
 
 export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
     const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? players[0]?.id ?? null);
-    const [matchType, setMatchType] = useState<'group' | 'playoff' | undefined>(undefined);
+    const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
     const [stats, setStats] = useState<PlayerStats | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -52,8 +52,8 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                         All
                     </button>
                     <button
-                        onClick={() => setMatchType('group')}
-                        className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'group' ? 'bg-val-red text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                        onClick={() => setMatchType('regular')}
+                        className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'regular' ? 'bg-val-red text-white' : 'text-foreground/40 hover:text-foreground'}`}
                     >
                         Regular
                     </button>

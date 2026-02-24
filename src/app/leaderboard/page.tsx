@@ -10,7 +10,7 @@ export default async function LeaderboardPage({
 }: {
     searchParams: { type?: string };
 }) {
-    const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'group' ? 'group' : undefined;
+    const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
     const leaderboard = await getLeaderboard(0, matchType);
 
     return (
@@ -37,8 +37,8 @@ export default async function LeaderboardPage({
                             All
                         </Link>
                         <Link
-                            href="/leaderboard?type=group"
-                            className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'group' ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
+                            href="/leaderboard?type=regular"
+                            className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'regular' ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
                         >
                             Regular
                         </Link>

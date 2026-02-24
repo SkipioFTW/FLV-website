@@ -10,7 +10,7 @@ export default async function SubstitutionsPage({
 }: {
     searchParams: { type?: string };
 }) {
-    const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'group' ? 'group' : undefined;
+    const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
     const analytics = await getSubstitutionAnalytics(matchType);
 
     return (
@@ -37,8 +37,8 @@ export default async function SubstitutionsPage({
                             All
                         </Link>
                         <Link
-                            href="/substitutions?type=group"
-                            className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'group' ? 'bg-val-yellow text-black shadow-lg shadow-val-yellow/20' : 'text-foreground/40 hover:text-foreground'}`}
+                            href="/substitutions?type=regular"
+                            className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'regular' ? 'bg-val-yellow text-black shadow-lg shadow-val-yellow/20' : 'text-foreground/40 hover:text-foreground'}`}
                         >
                             Regular
                         </Link>

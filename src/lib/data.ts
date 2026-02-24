@@ -506,7 +506,7 @@ export async function getStandings(): Promise<Map<string, StandingsRow[]>> {
  * Fetch player leaderboard stats
  * Replicates production SQL logic: includes unique matches where status is 'completed'
  */
-export async function getLeaderboard(minGames: number = 0, matchType?: 'group' | 'playoff'): Promise<LeaderboardPlayer[]> {
+export async function getLeaderboard(minGames: number = 0, matchType?: 'regular' | 'playoff'): Promise<LeaderboardPlayer[]> {
     try {
         // 1. Fetch all players and teams for lookup
         const [playersRes, teamsRes] = await Promise.all([
@@ -654,7 +654,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'group' |
 /**
  * Fetch detailed stats for a specific player
  */
-export async function getPlayerStats(playerId: number, matchType?: 'group' | 'playoff'): Promise<PlayerStats | null> {
+export async function getPlayerStats(playerId: number, matchType?: 'regular' | 'playoff'): Promise<PlayerStats | null> {
     try {
         // 1. Fetch player info
         const { data: player, error: playerError } = await supabase
@@ -931,7 +931,7 @@ export async function getPlayers(): Promise<{ id: number; name: string; riot_id:
 /**
  * Fetch detailed performance stats for a specific team
  */
-export async function getTeamPerformance(teamId: number, matchType?: 'group' | 'playoff'): Promise<TeamPerformance | null> {
+export async function getTeamPerformance(teamId: number, matchType?: 'regular' | 'playoff'): Promise<TeamPerformance | null> {
     try {
         // 1. Fetch team info
         const { data: team, error: teamError } = await supabase
@@ -1166,7 +1166,7 @@ export type SubstitutionAnalytics = {
 /**
  * Fetch substitution analytics
  */
-export async function getSubstitutionAnalytics(matchType?: 'group' | 'playoff'): Promise<SubstitutionAnalytics> {
+export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'): Promise<SubstitutionAnalytics> {
     try {
         // 1. Fetch data
         let matchQuery = supabase.from('matches').select('*').eq('status', 'completed');
