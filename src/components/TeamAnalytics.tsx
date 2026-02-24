@@ -17,6 +17,7 @@ interface Props {
 
 export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
     const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? teams[0]?.id ?? null);
+    const [matchType, setMatchType] = useState<'group' | 'playoff' | undefined>(undefined);
     const [stats, setStats] = useState<TeamPerformance | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -24,27 +25,50 @@ export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
         if (initialSelectedId) setSelectedId(initialSelectedId);
         if (selectedId) {
             setLoading(true);
-            getTeamPerformance(selectedId).then(data => {
+            getTeamPerformance(selectedId, matchType).then(data => {
                 setStats(data);
                 setLoading(false);
             });
         }
-    }, [selectedId, initialSelectedId]);
+    }, [selectedId, initialSelectedId, matchType]);
 
     return (
         <div className="space-y-8">
-            {/* Team Selector */}
-            <div className="glass rounded-xl p-4 border border-white/5 flex flex-wrap items-center gap-4">
-                <label className="text-sm font-bold uppercase tracking-wider text-foreground/60">Select Team:</label>
-                <select
-                    value={selectedId || ''}
-                    onChange={(e) => setSelectedId(Number(e.target.value))}
-                    className="bg-background/50 border border-white/10 rounded-lg px-4 py-2 focus:border-val-red outline-none min-w-[200px]"
-                >
-                    {teams.map(t => (
-                        <option key={t.id} value={t.id}>{t.name} [{t.tag}]</option>
-                    ))}
-                </select>
+            {/* Team Selector & Filter */}
+            <div className="glass rounded-xl p-4 border border-white/5 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <label className="text-sm font-bold uppercase tracking-wider text-foreground/60">Select Team:</label>
+                    <select
+                        value={selectedId || ''}
+                        onChange={(e) => setSelectedId(Number(e.target.value))}
+                        className="bg-background/50 border border-white/10 rounded-lg px-4 py-2 focus:border-val-red outline-none min-w-[200px]"
+                    >
+                        {teams.map(t => (
+                            <option key={t.id} value={t.id}>{t.name} [{t.tag}]</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
+                    <button
+                        onClick={() => setMatchType(undefined)}
+                        className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === undefined ? 'bg-val-blue text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                    >
+                        All
+                    </button>
+                    <button
+                        onClick={() => setMatchType('group')}
+                        className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'group' ? 'bg-val-blue text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                    >
+                        Regular
+                    </button>
+                    <button
+                        onClick={() => setMatchType('playoff')}
+                        className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'playoff' ? 'bg-val-blue text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                    >
+                        Playoffs
+                    </button>
+                </div>
             </div>
 
             <AnimatePresence mode="wait">

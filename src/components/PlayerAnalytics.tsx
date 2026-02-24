@@ -19,6 +19,7 @@ interface Props {
 
 export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
     const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? players[0]?.id ?? null);
+    const [matchType, setMatchType] = useState<'group' | 'playoff' | undefined>(undefined);
     const [stats, setStats] = useState<PlayerStats | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -26,22 +27,43 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
         if (initialSelectedId) setSelectedId(initialSelectedId);
         if (selectedId) {
             setLoading(true);
-            getPlayerStats(selectedId).then(data => {
+            getPlayerStats(selectedId, matchType).then(data => {
                 setStats(data);
                 setLoading(false);
             });
         }
-    }, [selectedId, initialSelectedId]);
+    }, [selectedId, initialSelectedId, matchType]);
 
     return (
         <div className="space-y-8">
-            {/* Player Searcher */}
-            <div className="flex justify-center">
+            {/* Player Searcher & Toggle */}
+            <div className="flex flex-col items-center gap-6">
                 <PlayerSearch
                     players={players}
                     onSelect={setSelectedId}
                     currentId={selectedId}
                 />
+
+                <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
+                    <button
+                        onClick={() => setMatchType(undefined)}
+                        className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === undefined ? 'bg-val-red text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                    >
+                        All
+                    </button>
+                    <button
+                        onClick={() => setMatchType('group')}
+                        className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'group' ? 'bg-val-red text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                    >
+                        Regular
+                    </button>
+                    <button
+                        onClick={() => setMatchType('playoff')}
+                        className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'playoff' ? 'bg-val-red text-white' : 'text-foreground/40 hover:text-foreground'}`}
+                    >
+                        Playoffs
+                    </button>
+                </div>
             </div>
 
             <AnimatePresence mode="wait">
