@@ -18,7 +18,6 @@ export async function GET() {
       return NextResponse.json({ items: [] });
     }
 
-    // Fetch all teams to avoid empty results due to type mismatch in .in()
     const { data: teams } = await supabaseServer
       .from('teams')
       .select('id,name,tag,logo_display');
@@ -31,18 +30,20 @@ export async function GET() {
       const loaded = await loadModel(false);
       model = loaded.model;
       scalers = loaded.scalers;
-    } catch {}
+    } catch { }
 
     const items: any[] = [];
     for (const m of matches) {
       try {
-        const fv = await buildFeatures(m.team1_id, m.team2_id);
+        const t1_id = Number(m.team1_id);
+        const t2_id = Number(m.team2_id);
+        const fv = await buildFeatures(t1_id, t2_id);
         let prob = 0.5;
         if (model && scalers) {
-          prob = logisticPredict(fv.values, model, scalers);
+          prob = logisticPredict(fv.values, model, scalers, t1_id, t2_id);
         }
-        const t1 = teamMap.get(Number(m.team1_id)) || { id: m.team1_id, name: null, tag: null };
-        const t2 = teamMap.get(Number(m.team2_id)) || { id: m.team2_id, name: null, tag: null };
+        const t1 = teamMap.get(t1_id) || { id: m.team1_id, name: null, tag: null };
+        const t2 = teamMap.get(t2_id) || { id: m.team2_id, name: null, tag: null };
         items.push({
           id: m.id,
           week: m.week,
