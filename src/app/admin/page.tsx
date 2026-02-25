@@ -1039,7 +1039,7 @@ function ScoreMapEditor() {
     const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
     const [roundsData, setRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
-    const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove"];
+    const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O"];
 
     useEffect(() => {
         import("@/lib/data").then(({ getAllMatches }) => {
