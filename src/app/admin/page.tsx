@@ -1379,7 +1379,7 @@ function ScoreMapEditor() {
                         <div className="col-span-3">
                             <label className="text-[8px] font-black uppercase tracking-widest text-foreground/40 block mb-1">Map Name</label>
                             <select value={mapName} onChange={e => setMapName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs">
-                                {["Unknown", "Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset", "Abyss"].map(m => (
+                                {["Unknown", "Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset", "Abyss", "Corrode"].map(m => (
                                     <option key={m} value={m} className="bg-background">{m}</option>
                                 ))}
                             </select>
