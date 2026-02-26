@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import {
     getPendingRequests,
@@ -1016,6 +1016,76 @@ function PlayoffBracketEditor({
 }
 
 /**
+ * Searchable player combobox used in the scoreboard rows
+ */
+function PlayerSearchSelect({
+    value,
+    options,
+    onChange,
+}: {
+    value: number;
+    options: { id: number; label: string }[];
+    onChange: (id: number) => void;
+}) {
+    const [query, setQuery] = useState("");
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const selectedLabel = options.find(o => o.id === value)?.label ?? "";
+    const displayQuery = open ? query : selectedLabel;
+
+    const filtered = query.trim()
+        ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+        : options;
+
+    // Close on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setOpen(false);
+                setQuery("");
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    return (
+        <div ref={containerRef} className="relative">
+            <input
+                type="text"
+                value={displayQuery}
+                placeholder="Select player…"
+                className="w-full bg-transparent text-white text-xs p-1 outline-none border-b border-white/10 focus:border-val-blue transition-colors"
+                onFocus={() => { setOpen(true); setQuery(""); }}
+                onChange={e => { setQuery(e.target.value); setOpen(true); }}
+            />
+            {open && (
+                <div className="absolute z-50 left-0 top-full mt-1 w-56 max-h-48 overflow-y-auto bg-[#1a1a2e] border border-white/10 rounded shadow-xl">
+                    <div
+                        className="px-3 py-1.5 text-xs text-foreground/40 hover:bg-white/10 cursor-pointer"
+                        onMouseDown={() => { onChange(0); setOpen(false); setQuery(""); }}
+                    >
+                        — Select —
+                    </div>
+                    {filtered.length === 0 ? (
+                        <div className="px-3 py-1.5 text-xs text-foreground/30 italic">No results</div>
+                    ) : filtered.map(o => (
+                        <div
+                            key={o.id}
+                            className={`px-3 py-1.5 text-xs cursor-pointer hover:bg-val-blue/20 ${o.id === value ? 'text-val-blue font-bold' : 'text-white'}`}
+                            onMouseDown={() => { onChange(o.id); setOpen(false); setQuery(""); }}
+                        >
+                            {o.label}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
  * Unified Score & Map Editor with Tracker.gg JSON import
  */
 function ScoreMapEditor() {
@@ -1441,10 +1511,10 @@ function ScoreMapEditor() {
                                 </div>
                                 {rows.map((row, idx) => (
                                     <div key={idx} className="grid grid-cols-9 gap-2 items-center bg-white/5 rounded p-1">
-                                        <select
+                                        <PlayerSearchSelect
                                             value={row.player_id || 0}
-                                            onChange={e => {
-                                                const v = parseInt(e.target.value);
+                                            options={globalOptions}
+                                            onChange={v => {
                                                 const next = [...rows];
                                                 const selectedPlayer = allPlayers.find(p => p.id === v);
                                                 const isOnTeam = !!selectedPlayer && selectedPlayer.default_team_id === teamId;
@@ -1456,11 +1526,7 @@ function ScoreMapEditor() {
                                                 next[idx] = { ...row, player_id: v, subbed_for_id: subFor, is_sub: !isOnTeam && v !== 0 };
                                                 setRows(next);
                                             }}
-                                            className="bg-transparent text-white text-xs p-1 outline-none"
-                                        >
-                                            <option value={0} className="bg-background">Select</option>
-                                            {globalOptions.map(o => <option key={o.id} value={o.id} className="bg-background">{o.label}</option>)}
-                                        </select>
+                                        />
                                         <div className="flex justify-center">
                                             <input type="checkbox" checked={row.is_sub} onChange={e => {
                                                 const next = [...rows]; next[idx] = { ...row, is_sub: e.target.checked };
