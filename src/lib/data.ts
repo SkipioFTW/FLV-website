@@ -2595,9 +2595,113 @@ export async function getPlayoffProbability(iterations: number = 1000) {
         });
     }
 
-    return Array.from(results.entries()).map(([teamId, count]) => ({
+    const output = Array.from(results.entries()).map(([teamId, count]) => ({
         teamId,
         name: teamMetadata.get(teamId)?.name || 'Unknown',
         probability: (count / iterations) * 100
     })).sort((a, b) => b.probability - a.probability);
+
+    // If no remaining matches, indicate that season is concluded
+    if (output.length === 0 && currentStandings.length > 0) {
+        return currentStandings.map(s => ({
+            teamId: s.id,
+            name: s.name,
+            probability: 0 // Will handle this in UI
+        }));
+    }
+
+    return output;
+}
+
+/**
+ * Simulate the entire playoff bracket to get win probabilities for each team.
+ */
+export async function getTournamentWinProbability(iterations: number = 1000) {
+    try {
+        const matches = await getPlayoffMatches();
+        if (matches.length === 0) return [];
+
+        const teamStats: Record<number, { id: number, name: string, wins: number }> = {};
+        const teamIds = new Set<number>();
+        matches.forEach(m => {
+            if (m.team1.id) teamIds.add(m.team1.id);
+            if (m.team2.id) teamIds.add(m.team2.id);
+        });
+
+        // Initialize results
+        teamIds.forEach(id => {
+            const team = matches.find(m => m.team1.id === id)?.team1 || matches.find(m => m.team2.id === id)?.team2;
+            teamStats[id] = { id, name: team?.name || 'Unknown', wins: 0 };
+        });
+
+        // Simple win prob model fallback if we can't load the full one easily here
+        const winProbs = new Map<number, number>();
+        const standings = await getStandings();
+        standings.forEach(group => {
+            group.forEach(s => {
+                const wr = s.Played > 0 ? s.Wins / s.Played : 0.5;
+                winProbs.set(s.id, wr);
+            });
+        });
+
+        for (let i = 0; i < iterations; i++) {
+            const simMatches = new Map<string, any>();
+            matches.forEach(m => simMatches.set(`${m.playoff_round}:${m.bracket_pos}`, { ...m }));
+
+            // Simulate through rounds 1 to 5
+            for (let r = 1; r <= 5; r++) {
+                const roundSlots = r === 1 ? 8 : r === 2 ? 8 : r === 3 ? 4 : r === 4 ? 2 : 1;
+                for (let p = 1; p <= roundSlots; p++) {
+                    const key = `${r}:${p}`;
+                    const match = simMatches.get(key);
+                    if (!match) continue;
+
+                    let winner: any = null;
+                    if (match.status === 'completed' && match.winner_id) {
+                        winner = match.winner_id === match.team1.id ? match.team1 : match.team2;
+                    } else if (match.team1.id && match.team2.id) {
+                        const p1 = winProbs.get(match.team1.id) || 0.5;
+                        const p2 = winProbs.get(match.team2.id) || 0.5;
+                        const prob1 = p1 / (p1 + p2 || 1);
+                        winner = Math.random() < prob1 ? match.team1 : match.team2;
+                    } else if (match.team1.id) {
+                        winner = match.team1;
+                    } else if (match.team2.id) {
+                        winner = match.team2;
+                    }
+
+                    if (winner) {
+                        if (r === 5) {
+                            teamStats[winner.id].wins += 1;
+                        } else if (r === 1) {
+                            // R1 -> R2 (same bracket_pos)
+                            const targetKey = `2:${p}`;
+                            const target = simMatches.get(targetKey) || { team1: { id: 0 }, team2: { id: 0 } };
+                            target.team2 = winner;
+                            simMatches.set(targetKey, target);
+                        } else {
+                            // R2+ -> Sibling pairing
+                            const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
+                            const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
+                            const targetKey = `${r + 1}:${targetPos}`;
+                            const target = simMatches.get(targetKey) || { team1: { id: 0 }, team2: { id: 0 } };
+                            if (p < siblingPos) target.team1 = winner;
+                            else target.team2 = winner;
+                            simMatches.set(targetKey, target);
+                        }
+                    }
+                }
+            }
+        }
+
+        return Object.values(teamStats).map(t => ({
+            teamId: t.id,
+            name: t.name,
+            probability: (t.wins / iterations) * 100
+        })).sort((a, b) => b.probability - a.probability);
+
+    } catch (e) {
+        console.error('Error simulating tournament:', e);
+        return [];
+    }
 }

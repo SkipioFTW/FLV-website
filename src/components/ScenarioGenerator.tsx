@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { StandingsRow } from '@/lib/data';
 
 interface Match {
@@ -18,6 +18,24 @@ interface Props {
 
 export default function ScenarioGenerator({ initialStandings, remainingMatches }: Props) {
     const [picks, setPicks] = useState<Record<number, number>>({}); // matchId -> winnerId
+
+    // Persistence
+    useEffect(() => {
+        const saved = localStorage.getItem('standings_picks');
+        if (saved) {
+            try {
+                setPicks(JSON.parse(saved));
+            } catch (e) {
+                console.error('Failed to load saved picks');
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (Object.keys(picks).length > 0) {
+            localStorage.setItem('standings_picks', JSON.stringify(picks));
+        }
+    }, [picks]);
 
     const simulatedStandings = useMemo(() => {
         const standings = new Map<number, StandingsRow>(initialStandings.map(s => [s.id, { ...s }]));

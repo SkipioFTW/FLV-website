@@ -3,7 +3,7 @@ import Navbar from '@/components/Navbar';
 import { useState, useEffect, useMemo } from 'react';
 import ScenarioGenerator from '@/components/ScenarioGenerator';
 import PlayoffProbability from '@/components/PlayoffProbability';
-import { getSimulationData, getPlayoffProbability } from '@/lib/data';
+import { getSimulationData, getPlayoffProbability, getTournamentWinProbability } from '@/lib/data';
 
 export default function PredictionsPage() {
   const [team1, setTeam1] = useState(0);
@@ -15,6 +15,7 @@ export default function PredictionsPage() {
   const [busyUpcoming, setBusyUpcoming] = useState(false);
   const [simulationData, setSimulationData] = useState<{ currentStandings: any[], remainingMatches: any[] } | null>(null);
   const [playoffProbs, setPlayoffProbs] = useState<any[]>([]);
+  const [tournamentProbs, setTournamentProbs] = useState<any[]>([]);
   const [activeView, setActiveView] = useState<'match' | 'scenario' | 'probability'>('match');
 
   useEffect(() => {
@@ -34,6 +35,7 @@ export default function PredictionsPage() {
     loadUpcoming();
     getSimulationData().then(setSimulationData);
     getPlayoffProbability().then(setPlayoffProbs);
+    getTournamentWinProbability().then(setTournamentProbs);
   }, []);
 
   const predict = async () => {
@@ -174,8 +176,27 @@ export default function PredictionsPage() {
           />
         )}
 
-        {activeView === 'probability' && playoffProbs.length > 0 && (
-          <PlayoffProbability probabilities={playoffProbs} />
+        {activeView === 'probability' && (
+          <div className="space-y-12">
+            {playoffProbs.length > 0 && playoffProbs.some(p => p.probability > 0) ? (
+              <PlayoffProbability probabilities={playoffProbs} />
+            ) : (
+              <div className="glass p-8 border border-white/5 rounded-xl text-center">
+                <div className="text-val-blue font-display text-2xl font-black uppercase italic mb-2">Regular Season Concluded</div>
+                <p className="text-foreground/40 text-sm">Standings are final. Qualification for Playoffs has been determined.</p>
+              </div>
+            )}
+
+            {tournamentProbs.length > 0 && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <h2 className="font-display text-2xl font-black italic uppercase tracking-wider text-val-red">Championship Projections</h2>
+                  <div className="h-px flex-1 bg-white/5" />
+                </div>
+                <PlayoffProbability probabilities={tournamentProbs} />
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>

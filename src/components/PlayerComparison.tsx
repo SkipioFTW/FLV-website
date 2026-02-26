@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { PlayerStats } from '@/lib/data';
+import { useState, useMemo, useEffect } from 'react';
+import { PlayerStats, getPlayerStats } from '@/lib/data';
+import PlayerSearch from './PlayerSearch';
 import {
     Radar,
     RadarChart,
@@ -11,28 +12,27 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-export default function PlayerComparison({ players }: { players: { id: number, name: string }[] }) {
+export default function PlayerComparison({ players }: { players: { id: number, name: string, riot_id: string }[] }) {
     const [id1, setId1] = useState<number | null>(null);
     const [id2, setId2] = useState<number | null>(null);
     const [stats1, setStats1] = useState<PlayerStats | null>(null);
     const [stats2, setStats2] = useState<PlayerStats | null>(null);
     const [loading, setLoading] = useState(false);
+    const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
 
-    const handleCompare = async () => {
-        if (!id1 || !id2) return;
-        setLoading(true);
-        try {
-            const { getPlayerStats } = await import('@/lib/data');
-            const [p1, p2] = await Promise.all([
-                getPlayerStats(id1),
-                getPlayerStats(id2)
-            ]);
-            setStats1(p1);
-            setStats2(p2);
-        } finally {
-            setLoading(false);
+    useEffect(() => {
+        if (id1 || id2) {
+            setLoading(true);
+            Promise.all([
+                id1 ? getPlayerStats(id1, matchType) : Promise.resolve(null),
+                id2 ? getPlayerStats(id2, matchType) : Promise.resolve(null)
+            ]).then(([p1, p2]) => {
+                if (id1) setStats1(p1);
+                if (id2) setStats2(p2);
+                setLoading(false);
+            });
         }
-    };
+    }, [id1, id2, matchType]);
 
     const radarData = useMemo(() => {
         if (!stats1 || !stats2) return [];
@@ -53,36 +53,39 @@ export default function PlayerComparison({ players }: { players: { id: number, n
     return (
         <div className="space-y-8">
             <div className="glass p-8 border border-white/5 rounded-xl">
-                <div className="grid md:grid-cols-3 gap-6 items-end">
-                    <div>
+                <div className="flex flex-col md:flex-row gap-8 items-center justify-between mb-8">
+                    <div className="w-full max-w-sm">
                         <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Player 1</label>
-                        <select
-                            value={id1 || ''}
-                            onChange={(e) => setId1(Number(e.target.value))}
-                            className="w-full bg-white/5 border border-white/10 rounded p-3 text-sm"
-                        >
-                            <option value="">Select player</option>
-                            {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <PlayerSearch players={players} onSelect={setId1} currentId={id1} />
                     </div>
-                    <div>
+                    <div className="text-xl font-display font-black text-white/10 italic">VS</div>
+                    <div className="w-full max-w-sm">
                         <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Player 2</label>
-                        <select
-                            value={id2 || ''}
-                            onChange={(e) => setId2(Number(e.target.value))}
-                            className="w-full bg-white/5 border border-white/10 rounded p-3 text-sm"
-                        >
-                            <option value="">Select player</option>
-                            {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <PlayerSearch players={players} onSelect={setId2} currentId={id2} />
                     </div>
-                    <button
-                        onClick={handleCompare}
-                        disabled={!id1 || !id2 || id1 === id2 || loading}
-                        className="h-[48px] bg-val-red text-white font-bold uppercase tracking-widest rounded transition-all hover:bg-val-red/90 disabled:opacity-50"
-                    >
-                        {loading ? 'Loading...' : 'Compare Players'}
-                    </button>
+                </div>
+
+                <div className="flex justify-center">
+                    <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
+                        <button
+                            onClick={() => setMatchType(undefined)}
+                            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === undefined ? 'bg-val-red text-white shadow-lg shadow-val-red/20' : 'text-foreground/40 hover:text-foreground'}`}
+                        >
+                            All Stats
+                        </button>
+                        <button
+                            onClick={() => setMatchType('regular')}
+                            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'regular' ? 'bg-val-red text-white shadow-lg shadow-val-red/20' : 'text-foreground/40 hover:text-foreground'}`}
+                        >
+                            Regular Season
+                        </button>
+                        <button
+                            onClick={() => setMatchType('playoff')}
+                            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'playoff' ? 'bg-val-red text-white shadow-lg shadow-val-red/20' : 'text-foreground/40 hover:text-foreground'}`}
+                        >
+                            Playoffs Only
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -93,12 +96,14 @@ export default function PlayerComparison({ players }: { players: { id: number, n
                         <h3 className="font-display text-xl font-black uppercase tracking-tight mb-8">Performance Comparison</h3>
                         <div className="space-y-6">
                             {[
+                                { label: 'Matches Played', val1: stats1.summary.matches, val2: stats2.summary.matches },
                                 { label: 'Average ACS', val1: stats1.summary.avgAcs, val2: stats2.summary.avgAcs },
                                 { label: 'K/D Ratio', val1: stats1.summary.kd, val2: stats2.summary.kd },
                                 { label: 'ADR', val1: stats1.summary.avgAdr, val2: stats2.summary.avgAdr },
                                 { label: 'KAST%', val1: `${stats1.summary.avgKast}%`, val2: `${stats2.summary.avgKast}%` },
                                 { label: 'Win Rate', val1: `${stats1.summary.winRate}%`, val2: `${stats2.summary.winRate}%` },
                                 { label: 'Pistol WR', val1: `${stats1.summary.pistolWinRate}%`, val2: `${stats2.summary.pistolWinRate}%` },
+                                { label: 'Clutch Rate', val1: (stats1.summary.clutchSuccessRate || 0) / 100, val2: (stats2.summary.clutchSuccessRate || 0) / 100 },
                             ].map((stat) => (
                                 <div key={stat.label} className="group">
                                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-2">

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { TeamPerformance } from '@/lib/data';
+import { useState, useMemo, useEffect } from 'react';
+import { TeamPerformance, getTeamPerformance } from '@/lib/data';
+import TeamSearch from './TeamSearch';
 import {
     LineChart,
     Line,
@@ -12,28 +13,27 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-export default function TeamComparison({ teams }: { teams: { id: number, name: string }[] }) {
+export default function TeamComparison({ teams }: { teams: { id: number, name: string, tag: string }[] }) {
     const [id1, setId1] = useState<number | null>(null);
     const [id2, setId2] = useState<number | null>(null);
     const [stats1, setStats1] = useState<TeamPerformance | null>(null);
     const [stats2, setStats2] = useState<TeamPerformance | null>(null);
     const [loading, setLoading] = useState(false);
+    const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
 
-    const handleCompare = async () => {
-        if (!id1 || !id2) return;
-        setLoading(true);
-        try {
-            const { getTeamPerformance } = await import('@/lib/data');
-            const [t1, t2] = await Promise.all([
-                getTeamPerformance(id1),
-                getTeamPerformance(id2)
-            ]);
-            setStats1(t1);
-            setStats2(t2);
-        } finally {
-            setLoading(false);
+    useEffect(() => {
+        if (id1 || id2) {
+            setLoading(true);
+            Promise.all([
+                id1 ? getTeamPerformance(id1, matchType) : Promise.resolve(null),
+                id2 ? getTeamPerformance(id2, matchType) : Promise.resolve(null)
+            ]).then(([t1, t2]) => {
+                if (id1) setStats1(t1);
+                if (id2) setStats2(t2);
+                setLoading(false);
+            });
         }
-    };
+    }, [id1, id2, matchType]);
 
     const progressionData = useMemo(() => {
         if (!stats1 || !stats2) return [];
@@ -59,36 +59,39 @@ export default function TeamComparison({ teams }: { teams: { id: number, name: s
     return (
         <div className="space-y-8">
             <div className="glass p-8 border border-white/5 rounded-xl">
-                <div className="grid md:grid-cols-3 gap-6 items-end">
-                    <div>
+                <div className="flex flex-col md:flex-row gap-8 items-center justify-between mb-8">
+                    <div className="w-full max-w-sm">
                         <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Team 1</label>
-                        <select
-                            value={id1 || ''}
-                            onChange={(e) => setId1(Number(e.target.value))}
-                            className="w-full bg-white/5 border border-white/10 rounded p-3 text-sm"
-                        >
-                            <option value="">Select team</option>
-                            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        <TeamSearch teams={teams} onSelect={setId1} currentId={id1} />
                     </div>
-                    <div>
+                    <div className="text-xl font-display font-black text-white/10 italic">VS</div>
+                    <div className="w-full max-w-sm">
                         <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Team 2</label>
-                        <select
-                            value={id2 || ''}
-                            onChange={(e) => setId2(Number(e.target.value))}
-                            className="w-full bg-white/5 border border-white/10 rounded p-3 text-sm"
-                        >
-                            <option value="">Select team</option>
-                            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        <TeamSearch teams={teams} onSelect={setId2} currentId={id2} />
                     </div>
-                    <button
-                        onClick={handleCompare}
-                        disabled={!id1 || !id2 || id1 === id2 || loading}
-                        className="h-[48px] bg-val-blue text-white font-bold uppercase tracking-widest rounded transition-all hover:bg-val-blue/90 disabled:opacity-50"
-                    >
-                        {loading ? 'Loading...' : 'Compare Teams'}
-                    </button>
+                </div>
+
+                <div className="flex justify-center">
+                    <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
+                        <button
+                            onClick={() => setMatchType(undefined)}
+                            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === undefined ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
+                        >
+                            All Stats
+                        </button>
+                        <button
+                            onClick={() => setMatchType('regular')}
+                            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'regular' ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
+                        >
+                            Regular Season
+                        </button>
+                        <button
+                            onClick={() => setMatchType('playoff')}
+                            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'playoff' ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
+                        >
+                            Playoffs Only
+                        </button>
+                    </div>
                 </div>
             </div>
 
