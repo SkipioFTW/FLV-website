@@ -1,0 +1,10 @@
+discord
+flask
+discord.py
+cloudscraper
+pandas
+requests
+PyGithub
+python-dotenv
+psycopg2-binary
+supabase
