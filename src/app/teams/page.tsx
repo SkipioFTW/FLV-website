@@ -13,13 +13,22 @@ export default async function TeamsPage({ searchParams }: { searchParams: { team
             <Navbar />
 
             <main className="max-w-7xl mx-auto px-6 pt-32 pb-20">
-                <div className="mb-12">
-                    <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3 animate-slide-in">
-                        Team <span className="text-val-blue">Performance</span>
-                    </h1>
-                    <p className="text-foreground/60 text-lg max-w-2xl">
-                        Track season progression, map win rates, and detailed roster analytics for every team.
-                    </p>
+                <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div>
+                        <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3 animate-slide-in">
+                            Team <span className="text-val-blue">Performance</span>
+                        </h1>
+                        <p className="text-foreground/60 text-lg max-w-2xl">
+                            Track season progression, map win rates, and detailed roster analytics for every team.
+                        </p>
+                    </div>
+                    <a
+                        href="/teams/compare"
+                        className="px-6 py-3 bg-val-blue/10 border border-val-blue/20 text-val-blue rounded hover:bg-val-blue/20 transition-all font-display text-sm font-black uppercase tracking-widest flex items-center gap-2 group"
+                    >
+                        Comparison Tool
+                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                    </a>
                 </div>
 
                 {teams.length > 0 ? (

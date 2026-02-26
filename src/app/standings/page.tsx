@@ -1,11 +1,12 @@
-import { getStandings } from '@/lib/data';
+import { getStandings, getMetaAnalytics } from '@/lib/data';
 import Navbar from '@/components/Navbar';
-import StandingsView from '@/components/StandingsView';
+import StandingsTabs from '@/components/StandingsTabs';
 
 export const revalidate = 900; // Revalidate every 15 minutes
 
 export default async function StandingsPage() {
     const groupedStandings = await getStandings();
+    const metaData = await getMetaAnalytics();
 
     return (
         <div className="min-h-screen">
@@ -17,11 +18,11 @@ export default async function StandingsPage() {
                         <span className="text-val-red">Season 23</span> Standings
                     </h1>
                     <p className="text-foreground/60 text-lg">
-                        Current tournament rankings based on match performance
+                        Current tournament rankings and league-wide meta analytics
                     </p>
                 </div>
 
-                <StandingsView groupedStandings={groupedStandings} />
+                <StandingsTabs groupedStandings={groupedStandings} metaData={metaData} />
             </main>
         </div>
     );

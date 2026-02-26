@@ -1,6 +1,9 @@
 'use client';
 import Navbar from '@/components/Navbar';
 import { useState, useEffect, useMemo } from 'react';
+import ScenarioGenerator from '@/components/ScenarioGenerator';
+import PlayoffProbability from '@/components/PlayoffProbability';
+import { getSimulationData, getPlayoffProbability } from '@/lib/data';
 
 export default function PredictionsPage() {
   const [team1, setTeam1] = useState(0);
@@ -10,6 +13,9 @@ export default function PredictionsPage() {
   const [loading, setLoading] = useState(false);
   const [upcoming, setUpcoming] = useState<any[]>([]);
   const [busyUpcoming, setBusyUpcoming] = useState(false);
+  const [simulationData, setSimulationData] = useState<{ currentStandings: any[], remainingMatches: any[] } | null>(null);
+  const [playoffProbs, setPlayoffProbs] = useState<any[]>([]);
+  const [activeView, setActiveView] = useState<'match' | 'scenario' | 'probability'>('match');
 
   useEffect(() => {
     import('@/lib/supabase').then(({ supabase }) => {
@@ -26,6 +32,8 @@ export default function PredictionsPage() {
       }
     };
     loadUpcoming();
+    getSimulationData().then(setSimulationData);
+    getPlayoffProbability().then(setPlayoffProbs);
   }, []);
 
   const predict = async () => {
@@ -51,10 +59,44 @@ export default function PredictionsPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
       <Navbar />
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-24 space-y-8">
-        <div className="glass p-8 rounded border border-white/5">
-          <h1 className="font-display text-4xl font-black italic text-val-blue uppercase tracking-tight mb-2">Predictions</h1>
-          <p className="text-foreground/60 text-sm mb-6">Pick two teams to simulate the match-up and view the predicted win probability.</p>
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-32 space-y-12 animate-in fade-in duration-700">
+        <header>
+          <h1 className="font-display text-5xl md:text-7xl font-black italic text-val-blue uppercase tracking-tight mb-4">
+            League <span className="text-val-red">Simulations</span>
+          </h1>
+          <p className="text-foreground/60 text-lg max-w-2xl font-medium">
+            Analyze match probabilities, simulate remaining matches, and view mathematical playoff projections.
+          </p>
+        </header>
+
+        {/* View Toggles */}
+        <div className="flex flex-wrap gap-4 border-b border-white/10 pb-6">
+          <button
+            onClick={() => setActiveView('match')}
+            className={`px-8 py-3 font-display font-black uppercase tracking-widest text-sm transition-all border-b-2 ${activeView === 'match' ? 'border-val-red text-white' : 'border-transparent text-foreground/40 hover:text-foreground'}`}
+          >
+            Match Predictor
+          </button>
+          <button
+            onClick={() => setActiveView('scenario')}
+            className={`px-8 py-3 font-display font-black uppercase tracking-widest text-sm transition-all border-b-2 ${activeView === 'scenario' ? 'border-val-red text-white' : 'border-transparent text-foreground/40 hover:text-foreground'}`}
+          >
+            Scenario Generator
+          </button>
+          <button
+            onClick={() => setActiveView('probability')}
+            className={`px-8 py-3 font-display font-black uppercase tracking-widest text-sm transition-all border-b-2 ${activeView === 'probability' ? 'border-val-red text-white' : 'border-transparent text-foreground/40 hover:text-foreground'}`}
+          >
+            Playoff Probabilities
+          </button>
+        </div>
+
+        {activeView === 'match' && (
+        <div className="space-y-8">
+        <div className="glass p-8 rounded border border-white/5 relative overflow-hidden group">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-val-blue/5 rounded-full blur-3xl pointer-events-none group-hover:bg-val-blue/10 transition-colors" />
+          <h1 className="font-display text-4xl font-black italic text-val-blue uppercase tracking-tight mb-2 relative z-10">Match Predictor</h1>
+          <p className="text-foreground/60 text-sm mb-6 relative z-10">Pick two teams to simulate the match-up and view the predicted win probability.</p>
           <div className="grid md:grid-cols-3 gap-3 items-end">
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Team 1</label>
@@ -88,7 +130,7 @@ export default function PredictionsPage() {
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-6">
           <h2 className="font-display text-2xl font-black italic uppercase tracking-wider text-val-blue">Upcoming Match Predictions</h2>
           <div className="glass p-6 rounded border border-white/5">
             {busyUpcoming ? (
@@ -122,6 +164,19 @@ export default function PredictionsPage() {
             )}
           </div>
         </div>
+        </div>
+        )}
+
+        {activeView === 'scenario' && simulationData && (
+          <ScenarioGenerator
+            initialStandings={simulationData.currentStandings}
+            remainingMatches={simulationData.remainingMatches}
+          />
+        )}
+
+        {activeView === 'probability' && playoffProbs.length > 0 && (
+          <PlayoffProbability probabilities={playoffProbs} />
+        )}
       </main>
     </div>
   );

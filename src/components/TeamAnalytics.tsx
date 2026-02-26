@@ -90,10 +90,12 @@ export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
                         className="space-y-8"
                     >
                         {/* Summary Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             <StatCard label="Group" value={stats.group} color="text-val-blue" />
                             <StatCard label="Total Points" value={stats.progression.reduce((acc, curr) => acc + curr.points, 0)} color="text-val-red" />
                             <StatCard label="Map Win Rate" value={`${Math.round((stats.maps.reduce((acc, curr) => acc + curr.wins, 0) / stats.maps.reduce((acc, curr) => acc + curr.wins + curr.losses, 0) || 0) * 100)}%`} color="text-foreground" />
+                            <StatCard label="Pistol WR" value={`${stats.summary.pistolWinRate}%`} color="text-val-blue" />
+                            <StatCard label="Round WR" value={`${stats.summary.roundWinRate}%`} color="text-val-red" />
                             <StatCard label="Avg Team ACS" value={Math.round(stats.playerStats.reduce((acc, curr) => acc + curr.avgAcs, 0) / stats.playerStats.length || 0)} color="text-val-yellow" />
                         </div>
 

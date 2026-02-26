@@ -153,12 +153,14 @@ export default function PlayerAnalytics({ players, initialSelectedId }: Props) {
                         </div>
 
                         {/* Summary Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-4">
                             <StatCard label="Avg ACS" value={stats.summary.avgAcs} color="text-val-red" />
                             <StatCard label="K/D Ratio" value={stats.summary.kd} color="text-val-blue" />
                             <StatCard label="ADR" value={stats.summary.avgAdr ?? 0} color="text-val-yellow" />
                             <StatCard label="KAST" value={`${stats.summary.avgKast ?? 0}%`} color="text-val-blue" />
-                            <StatCard label="Kills / Round" value={stats.summary.kpr} color="text-val-yellow" />
+                            <StatCard label="Pistol WR" value={`${stats.summary.pistolWinRate ?? 0}%`} color="text-val-blue" />
+                            <StatCard label="Clutch Rate" value={(stats.summary.clutchSuccessRate ?? 0) / 100} color="text-val-red" />
+                            <StatCard label="K/R" value={stats.summary.kpr} color="text-val-yellow" />
                             <StatCard label="Matches" value={stats.summary.matches} color="text-foreground" />
                             <StatCard label="Top Agent" value={stats.agents[0]?.name || 'N/A'} color="text-val-red" />
                         </div>

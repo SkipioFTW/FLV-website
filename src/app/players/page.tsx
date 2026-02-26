@@ -13,13 +13,22 @@ export default async function PlayersPage({ searchParams }: { searchParams: { pl
             <Navbar />
 
             <main className="max-w-7xl mx-auto px-6 pt-32 pb-20">
-                <div className="mb-12">
-                    <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3 animate-slide-in">
-                        Player <span className="text-val-red">Statistics</span>
-                    </h1>
-                    <p className="text-foreground/60 text-lg max-w-2xl">
-                        Deep dive into individual performance metrics, agent masteries, and match-by-match analytics.
-                    </p>
+                <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div>
+                        <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3 animate-slide-in">
+                            Player <span className="text-val-red">Statistics</span>
+                        </h1>
+                        <p className="text-foreground/60 text-lg max-w-2xl">
+                            Deep dive into individual performance metrics, agent masteries, and match-by-match analytics.
+                        </p>
+                    </div>
+                    <a
+                        href="/players/compare"
+                        className="px-6 py-3 bg-val-red/10 border border-val-red/20 text-val-red rounded hover:bg-val-red/20 transition-all font-display text-sm font-black uppercase tracking-widest flex items-center gap-2 group"
+                    >
+                        Comparison Tool
+                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                    </a>
                 </div>
 
                 {players.length > 0 ? (
