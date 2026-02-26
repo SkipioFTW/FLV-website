@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { secureCompare } from "@/lib/adminAuth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,9 +11,16 @@ export async function POST(req: NextRequest) {
     if (!ENV_USER || !ENV_PASS || !ENV_TOKEN) {
       return NextResponse.json({ ok: false, error: "Server not configured" }, { status: 500 });
     }
-    if (username !== ENV_USER || password !== ENV_PASS || token !== ENV_TOKEN) {
+
+    // Use timing-safe comparison for all credentials to prevent timing attacks
+    const isUserValid = secureCompare(username, ENV_USER);
+    const isPassValid = secureCompare(password, ENV_PASS);
+    const isTokenValid = secureCompare(token, ENV_TOKEN);
+
+    if (!isUserValid || !isPassValid || !isTokenValid) {
       return NextResponse.json({ ok: false }, { status: 401 });
     }
+
     const ts = Date.now().toString();
     const msg = `admin:${ts}`;
     const sig = crypto.createHmac("sha256", ENV_TOKEN).update(msg).digest("hex");
