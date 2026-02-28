@@ -1,48 +1,66 @@
 /**
- * AI Chat Module
+ * AI Chat Module — SQL Agent (v7.0)
  *
- * Handles communication with the external LLM API.
- * Uses Gemini Flash free tier by default, configurable via env vars.
+ * Instead of injecting a snapshot, this module gives the AI the Database Schema
+ * and lets it run READ-ONLY SELECT queries to get real-time, precise data.
  *
- * Safety:
- *  - No SQL generation
- *  - No schema exposure
- *  - Strict system prompt
- *  - Token-limited responses
+ * Security:
+ *  - Queries are validated server-side (SELECT-only, 2000 char limit)
+ *  - Supabase exec_sql function further enforces READ-ONLY at DB level
+ *  - Users cannot influence the SQL validation logic
  */
 
-import type { LeagueSnapshot } from './snapshot';
+import { executeAIQuery } from './db';
 
-const SYSTEM_PROMPT = `You are the Lead Analyst of the FLV Valorant League. Your job is to provide punchy, professional, and data-driven insights to the fans.
+// ─── Database Schema Context ──────────────────────────────────────────────────
+// This is given to the AI so it knows what tables and columns exist.
+// DO NOT include sensitive columns here.
+const DB_SCHEMA = `
+DATABASE SCHEMA (Valorant FLV League):
 
-RESPONSE STRUCTURE:
-1. **THE HEADLINE**: A direct, 1-sentence answer to the user's question in BOLD.
-2. **ANALYSIS**: 2-3 bullet points with specific stats from the snapshot that support your headline. Reference Map Stats or Historical Trends if relevant.
-3. **THE TAKE**: A brief closing sentence with a "pro" opinion or prediction.
+teams (id, name, tag, group_name)
+players (id, name, riot_id, default_team_id)
+matches (id, week, team1_id, team2_id, winner_id, status, match_type, score_t1, score_t2)
+match_maps (match_id, map_index, map_name, team1_rounds, team2_rounds, winner_id)
+match_stats_map (player_id, team_id, match_id, map_index, agent, acs, kills, deaths, assists, adr, kast, hs_pct, fk, fd, clutches)
+standings (id, team_id, wins, losses, points)
+
+KEY NOTES:
+- 'matches.status' = 'completed' for completed games.
+- 'match_type' = 'regular' or 'playoff'.
+- Use JOIN on team_id/player_id to get names.
+- Excluded teams: 'FAT1', 'FAT2' (practice accounts, exclude from analysis).
+- ALL numeric stats in match_stats_map are per-map (not per-player total).
+- For per-player averages, use AVG(acs), AVG(kd), etc.
+- 'score_t1'/'score_t2' in matches = maps won (e.g., 2-1 = Bo3).
+`;
+
+// ─── System Prompt ──────────────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are the Lead Analyst of the FLV Valorant League. Your job is to provide punchy, precise, data-driven insights.
+
+WORKFLOW:
+1. When you need stats, output ONE SQL block to query the database:
+   \`\`\`sql
+   SELECT ...
+   \`\`\`
+2. The system will run your query and return the results.
+3. Use the results to form your final answer.
+4. For simple conversational messages (greetings, thanks), respond directly WITHOUT a SQL query.
+
+RESPONSE STRUCTURE (for data questions):
+1. **THE HEADLINE**: A direct, 1-sentence answer in BOLD.
+2. **ANALYSIS**: 2-3 bullet points citing exact numbers from the query results.
+3. **THE TAKE**: A brief closing opinion or prediction.
 
 STYLE RULES:
-- Be punchy and authoritative. No robotic preambles.
-- Use **BOLD** for Team Tags (e.g. **UNC**, **GT**) and Player Names.
-- Use metric abbreviations: ACS, K/D, ADR, FK/FD.
-- You now have access to the last 100 matches and map-specific win rates. Use this for trend analysis!
-- Keep total response length under 150 words.
+- Be punchy and authoritative with no robotic preambles.
+- Use **BOLD** for Team Tags and Player Names.
+- Target 100-150 words for data answers.
+- ONLY generate SELECT queries. Never INSERT, UPDATE, DELETE, or DROP.
 
-LEAGUE DATA COMPACT KEY REFERENCE:
-- tm: team mapping array (e.g. ["UNC", "GT"]). Use indices to find team names.
-- ps: player_stats (n: name, t: team_idx, m: matches, a: acs, k: k/d, d: adr, s: kast, h: hs%, e: entry impact, c: clutches, g: agents used with games and winrate%)
-- st: standings (g: group_name, t: [r: rank, n: name, t: tag, w: wins, l: losses, p: points, pa: points against, pd: point diff])
-- ts: team_stats (t: tag, rd: round diff, pw: pistol win rate%, rw: round win rate%)
-- ms: map_stats (n: name, g: games, wr: win rate%, tr: total rounds)
-- as: agent_stats (n: name, pr: pick rate%, a: avg acs)
-- ld: leaders (a: top acs, k: top k/d, e: top entry impact)
-- res: recent_results (w: week, t1: team 1, t2: team 2, s: score, win: winner tag)
+${DB_SCHEMA}`;
 
-RULES:
-- Use the COMPACT KEY REFERENCE above to interpret the league snapshot provided below.
-- You MUST ONLY answer using the provided league data snapshot.
-- If a player stats reference a team index (t: 0), look up index 0 in the 'tm' array to get the tag.
-- Respond in the user's language.`;
-
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
@@ -53,13 +71,21 @@ interface ChatResponse {
     error?: string;
 }
 
-/**
- * Send a chat message to the LLM with the league snapshot as context.
- * Supports Gemini (Google AI Studio) and OpenAI-compatible APIs.
- */
+// ─── SQL Parser ───────────────────────────────────────────────────────────────
+function extractSQL(text: string): string | null {
+    // Match ```sql ... ``` blocks
+    const fencedMatch = text.match(/```sql\s*([\s\S]+?)```/i);
+    if (fencedMatch) return fencedMatch[1].trim();
+    // Match raw SELECT ... ; blocks as fallback
+    const rawMatch = text.match(/\b(SELECT\s[\s\S]+?;)/i);
+    if (rawMatch) return rawMatch[1].trim();
+    return null;
+}
+
+// ─── Provider Router ─────────────────────────────────────────────────────────
 export async function chatWithAI(
     userMessage: string,
-    snapshot: LeagueSnapshot,
+    _snapshot: any,         // kept for backward-compat with route.ts, not used
     conversationHistory: ChatMessage[] = []
 ): Promise<ChatResponse> {
     const apiKey = process.env.AI_API_KEY;
@@ -69,60 +95,48 @@ export async function chatWithAI(
         return { reply: '', error: 'AI_API_KEY is not configured.' };
     }
 
-    // Build the context block (compact JSON)
-    const snapshotJson = JSON.stringify(snapshot);
-
-    const aiModelEnv = process.env.AI_MODEL;
-
     try {
-        if (provider === 'gemini') {
-            const model = (aiModelEnv && aiModelEnv.includes('gemini')) ? aiModelEnv : 'gemini-2.0-flash';
-            return await callGemini(apiKey, snapshotJson, userMessage, conversationHistory, model);
-        } else if (provider === 'groq') {
-            const model = (aiModelEnv && (aiModelEnv.includes('llama') || aiModelEnv.includes('mixtral'))) ? aiModelEnv : 'llama-3.1-8b-instant';
-            return await callOpenAICompatible(
-                'https://api.groq.com/openai/v1/chat/completions',
-                apiKey,
-                model,
-                snapshotJson,
-                userMessage,
-                conversationHistory
-            );
-        } else if (provider === 'mistral') {
-            const model = (aiModelEnv && aiModelEnv.includes('mistral')) ? aiModelEnv : 'mistral-small-latest';
-            return await callOpenAICompatible(
-                'https://api.mistral.ai/v1/chat/completions',
-                apiKey,
-                model,
-                snapshotJson,
-                userMessage,
-                conversationHistory
-            );
-        } else if (provider === 'deepseek') {
-            const model = (aiModelEnv && aiModelEnv.includes('deepseek')) ? aiModelEnv : 'deepseek-chat';
-            return await callOpenAICompatible(
-                'https://api.deepseek.com/chat/completions',
-                apiKey,
-                model,
-                snapshotJson,
-                userMessage,
-                conversationHistory
-            );
-        } else {
-            // Generic OpenAI-compatible endpoint
-            const baseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1/chat/completions';
-            const model = aiModelEnv || 'gpt-4o-mini';
-            return await callOpenAICompatible(baseUrl, apiKey, model, snapshotJson, userMessage, conversationHistory);
+        // Step 1: Ask the AI for its response (may include a SQL block)
+        const firstResponse = await callProvider(provider, apiKey, userMessage, conversationHistory, null);
+
+        // Step 2: Check if the AI generated a SQL query
+        const sql = extractSQL(firstResponse);
+        if (!sql) {
+            // Direct conversational answer, no SQL needed
+            return { reply: firstResponse };
         }
+
+        // Step 3: Execute the validated query
+        console.log(`AI SQL Query: ${sql.slice(0, 200)}...`);
+        const { data, error: queryError } = await executeAIQuery(sql);
+
+        if (queryError) {
+            console.error('AI SQL blocked:', queryError);
+            return { reply: `⚠️ Query Error: ${queryError}` };
+        }
+
+        // Step 4: Ask the AI to formulate its final answer using the results
+        const resultsJson = JSON.stringify(data?.slice(0, 50) ?? []); // Cap at 50 rows
+        const followupMessage = `Query results:\n${resultsJson}\n\nNow provide your final analysis based on these results.`;
+
+        const finalResponse = await callProvider(
+            provider,
+            apiKey,
+            followupMessage,
+            [...conversationHistory, { role: 'user', content: userMessage }, { role: 'assistant', content: firstResponse }],
+            null
+        );
+
+        return { reply: finalResponse };
+
     } catch (err: any) {
         console.error('AI chat error:', err);
         const errLower = (err.message || '').toLowerCase();
         const isQuotaError = errLower.includes('429') || errLower.includes('quota') || errLower.includes('rate_limited') || errLower.includes('rate_limit_exceeded');
-        const isTPMError = errLower.includes('tpm') || errLower.includes('tokens per minute');
 
-        if (isQuotaError || isTPMError) {
+        if (isQuotaError) {
             return {
-                reply: "⚠️ **Monthly/Rate Limit Exceeded.** Your current AI provider (Mistral Free) has hit its limit.\n\n**Solutions:**\n1. **Wait 60 seconds** and try again (if it's a per-minute limit).\n2. **Switch to DeepSeek** for unlimited high-capacity access ($1 lasts months). Set `AI_PROVIDER=deepseek`.\n3. Check if your Mistral **Monthly 1M Token limit** is exhausted.",
+                reply: '⚠️ **Rate Limit Exceeded.** Wait 60 seconds and try again. If this persists, switch your `AI_PROVIDER` to `deepseek` or `groq`.',
                 error: err.message
             };
         }
@@ -130,111 +144,85 @@ export async function chatWithAI(
     }
 }
 
-// ─── Gemini (Google AI Studio Free Tier) ─────────────────────────────
+// ─── Central Provider Dispatcher ─────────────────────────────────────────────
+async function callProvider(
+    provider: string,
+    apiKey: string,
+    userMessage: string,
+    history: ChatMessage[],
+    _unused: null
+): Promise<string> {
+    if (provider === 'gemini') {
+        return callGemini(apiKey, userMessage, history);
+    }
 
+    const providerUrls: Record<string, string> = {
+        groq: 'https://api.groq.com/openai/v1/chat/completions',
+        mistral: 'https://api.mistral.ai/v1/chat/completions',
+        deepseek: 'https://api.deepseek.com/chat/completions',
+    };
+    const providerModels: Record<string, string> = {
+        groq: 'llama-3.1-8b-instant',
+        mistral: 'mistral-small-latest',
+        deepseek: 'deepseek-chat',
+    };
+
+    const baseUrl = providerUrls[provider] || (process.env.AI_BASE_URL || 'https://api.openai.com/v1/chat/completions');
+    const model = process.env.AI_MODEL || providerModels[provider] || 'gpt-4o-mini';
+
+    return callOpenAICompatible(baseUrl, apiKey, model, userMessage, history);
+}
+
+// ─── Gemini ───────────────────────────────────────────────────────────────────
 async function callGemini(
     apiKey: string,
-    snapshotJson: string,
     userMessage: string,
     history: ChatMessage[],
     model: string = 'gemini-2.0-flash'
-): Promise<ChatResponse> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+): Promise<string> {
+    const useModel = process.env.AI_MODEL || model;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${useModel}:generateContent?key=${apiKey}`;
 
-    // Build conversation contents
     const contents: any[] = [];
-
-    // System instruction is passed via systemInstruction field
-    const systemInstruction = {
-        parts: [{ text: `${SYSTEM_PROMPT}\n\n--- LEAGUE DATA SNAPSHOT ---\n${snapshotJson}\n--- END SNAPSHOT ---` }]
-    };
-
-    // Add conversation history
     history.forEach(msg => {
-        contents.push({
-            role: msg.role === 'user' ? 'user' : 'model',
-            parts: [{ text: msg.content }]
-        });
+        contents.push({ role: msg.role === 'user' ? 'user' : 'model', parts: [{ text: msg.content }] });
     });
-
-    // Add current user message
-    contents.push({
-        role: 'user',
-        parts: [{ text: userMessage }]
-    });
-
-    const body = {
-        systemInstruction,
-        contents,
-        generationConfig: {
-            maxOutputTokens: 2048,
-            temperature: 0.7,
-        },
-    };
+    contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents,
+            generationConfig: { maxOutputTokens: 1024, temperature: 0.5 },
+        }),
     });
 
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini API error ${res.status}: ${errText}`);
-    }
-
+    if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return { reply };
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-// ─── OpenAI-Compatible (Groq, OpenAI, etc.) ──────────────────────────
-
+// ─── OpenAI-Compatible ────────────────────────────────────────────────────────
 async function callOpenAICompatible(
     baseUrl: string,
     apiKey: string,
     model: string,
-    snapshotJson: string,
     userMessage: string,
     history: ChatMessage[]
-): Promise<ChatResponse> {
-    const messages: any[] = [
-        {
-            role: 'system',
-            content: `${SYSTEM_PROMPT}\n\n--- LEAGUE DATA SNAPSHOT ---\n${snapshotJson}\n--- END SNAPSHOT ---`,
-        },
-    ];
-
-    // Add conversation history
-    history.forEach(msg => {
-        messages.push({ role: msg.role, content: msg.content });
-    });
-
-    // Add current user message
+): Promise<string> {
+    const messages: any[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+    history.forEach(msg => messages.push({ role: msg.role, content: msg.content }));
     messages.push({ role: 'user', content: userMessage });
-
-    const body = {
-        model,
-        messages,
-        max_tokens: 2048,
-        temperature: 0.7,
-    };
 
     const res = await fetch(baseUrl, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages, max_tokens: 1024, temperature: 0.5 }),
     });
 
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`LLM API error ${res.status}: ${errText}`);
-    }
-
+    if (!res.ok) throw new Error(`LLM API error ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    const reply = data?.choices?.[0]?.message?.content || '';
-    return { reply };
+    return data?.choices?.[0]?.message?.content || '';
 }
