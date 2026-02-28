@@ -30,8 +30,10 @@ export async function POST(req: NextRequest) {
         let snapshot: LeagueSnapshot | null = null;
 
         if (cachedSnapshot && (Date.now() - cachedSnapshot.at < CACHE_TTL)) {
+            console.log('AI Chat: Snapshot Cache HIT');
             snapshot = cachedSnapshot.data;
         } else {
+            console.log('AI Chat: Snapshot Cache MISS - Fetching from Supabase');
             const { data: snapRows, error: snapErr } = await supabase
                 .from('league_snapshots')
                 .select('data')
@@ -62,6 +64,8 @@ export async function POST(req: NextRequest) {
                 .slice(-10) // Keep last 10 messages to limit context size
                 .map((h: any) => ({ role: h.role as 'user' | 'assistant', content: h.content.slice(0, 2000) }))
             : [];
+
+        console.log(`AI Chat: Calling Provider: ${process.env.AI_PROVIDER || 'gemini'} | History Items: ${validHistory.length}`);
 
         // 3. Call the AI
         const result = await chatWithAI(message.trim(), snapshot, validHistory);

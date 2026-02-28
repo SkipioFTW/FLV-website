@@ -37,18 +37,19 @@ export default function AIAnalyst() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: userMsg,
-                    history: messages.slice(1) // skip the welcome msg
+                    history: messages.slice(1) // include conversation context
                 })
             });
 
             const data = await res.json();
-            if (data.reply) {
+            if (res.ok && data.reply) {
                 setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
             } else {
-                setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting to my central brain. Please check if a snapshot has been generated." }]);
+                const errorMsg = data.error || data.message || "Unknown error";
+                setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Analyst Error: ${errorMsg}` }]);
             }
-        } catch (e) {
-            setMessages(prev => [...prev, { role: 'assistant', content: "Error: Could not reach the analyst service." }]);
+        } catch (e: any) {
+            setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Connection Error: ${e.message || "Check your internet."}` }]);
         } finally {
             setLoading(false);
         }
@@ -104,8 +105,8 @@ export default function AIAnalyst() {
                                         {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
                                     </div>
                                     <div className={`p-3 rounded-2xl text-xs leading-relaxed font-medium ${msg.role === 'assistant'
-                                            ? 'bg-white/5 text-foreground rounded-tl-none border border-white/5'
-                                            : 'bg-val-red text-white rounded-tr-none shadow-lg'
+                                        ? 'bg-white/5 text-foreground rounded-tl-none border border-white/5'
+                                        : 'bg-val-red text-white rounded-tr-none shadow-lg'
                                         }`}>
                                         {msg.content}
                                     </div>
