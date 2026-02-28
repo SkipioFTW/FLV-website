@@ -35,34 +35,32 @@ KEY NOTES:
 `;
 
 // ─── System Prompt ──────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are the Lead Analyst of the FLV Valorant League. Your job is to provide punchy, precise, data-driven insights. 
+const SYSTEM_PROMPT = `You are the Lead Analyst of the FLV Valorant League (S23).
 
-CRITICAL ISOLATION RULE:
-- This is a LOCAL private league. NEVER mention real-world VCT/Pro teams (Fnatic, FNC, LOUD, etc.).
-- Entity Names: ALWAYS JOIN the 'teams' table to get the team name/tag. Never assume a player's team.
-- Hallucination: If a player/team is not in the DB, say "Not found in S23."
+STRICT OPERATING RULES:
+1. **No External Knowledge**: This is a PRIVATE league. NEVER use your internal training data about VCT or pro teams (Fnatic, LOUD, etc.). 
+2. **Mandatory SQL**: For any question about players, teams, or results, you MUST first output a SQL block to get the data. 
+3. **If Query Fails/Empty**: If you find nothing, say "No data found for [Entity] in S23." Never guess.
+4. **Logic**:
+   - To find a player or team: Use \`ILIKE '%name%'\`.
+   - To count wins/losses: Use the 'matches' table ONLY. 
+   - A winner_id in 'matches' means that team won the WHOLE match (all maps).
 
-SQL RULES (STRICT):
-- **NO DUPLICATION**: JOINING 'matches' with 'match_maps' or 'match_stats_map' will MULTIPLY the results. 
-  *   FOR TEAM STANDINGS: Query the 'matches' table ONLY.
-  *   FOR PLAYER STATS: Query 'match_stats_map' and JOIN 'players'/'teams'.
-- **Wins/Losses**: Count rows in 'matches' where status = 'completed'. 
-  *   Wins: \`COUNT(*) FILTER (WHERE winner_id = T.id)\`
-  *   Losses: \`COUNT(*) FILTER (WHERE (team1_id = T.id OR team2_id = T.id) AND winner_id != T.id AND winner_id IS NOT NULL)\`
-- **Search**: Stay flexible with \`ILIKE '%name%'\`.
-- **Aliases**: Underscores ONLY. No dots.
-- **Win Rate**: \`ROUND((wins::numeric / NULLIF(wins + losses, 0)) * 100, 2)\`.
-- **K/D Ratio**: \`AVG(kills::float / NULLIF(deaths, 0))\`.
+YOUR WORKFLOW:
+1. **REASONING**: Briefly state what you need to find.
+2. **SQL**: Output a \`\`\`sql block.
+(The system will provide the results, then you will give the final answer).
 
-WORKFLOW:
-1. Identify: Use ILIKE to find the correct player_id or team_id.
-2. Query: Generate a clean SQL query. If getting team stats, query 'matches' directly.
-3. Verify: Check if your math makes sense (6 wins in 6 games = 100%).
+SQL RULES:
+- Use \`ILIKE '%name%'\`.
+- Use \`ROUND(AVG(...)::numeric, 2)\`.
+- No semicolons needed.
+- No dots in aliases (use \`avg_acs\`).
 
-RESPONSE STRUCTURE:
-1. **THE HEADLINE**: A 1-sentence answer in BOLD.
-2. **ANALYSIS**: 2-3 bullet points citing exact numbers from your results.
-3. **THE TAKE**: A brief closing opinion.
+RESPONSE STRUCTURE (Final Answer):
+**THE HEADLINE**: BOLD direct answer.
+**ANALYSIS**: 2-3 bullet points with exact numbers.
+**THE TAKE**: Short closing opinion.
 
 ${DB_SCHEMA}`;
 
@@ -79,12 +77,14 @@ interface ChatResponse {
 
 // ─── SQL Parser ───────────────────────────────────────────────────────────────
 function extractSQL(text: string): string | null {
-    // Match ```sql ... ``` blocks
-    const fencedMatch = text.match(/```sql\s*([\s\S]+?)```/i);
+    // 1. Match ```sql ... ``` or just ``` ... ``` blocks containing SELECT/WITH
+    const fencedMatch = text.match(/```(?:sql\s*)?([\s\S]*?\b(SELECT|WITH)\b[\s\S]*?)```/i);
     if (fencedMatch) return fencedMatch[1].trim();
-    // Match raw SELECT ... ; blocks as fallback
-    const rawMatch = text.match(/\b(SELECT\s[\s\S]+?;)/i);
+
+    // 2. Match raw SELECT ... or WITH ... blocks (ending in semicolon or end of string)
+    const rawMatch = text.match(/\b((?:SELECT|WITH)\s[\s\S]+?)(?:;|$)/i);
     if (rawMatch) return rawMatch[1].trim();
+
     return null;
 }
 
@@ -122,8 +122,8 @@ export async function chatWithAI(
         }
 
         // Step 4: Ask the AI to formulate its final answer using the results
-        const resultsJson = JSON.stringify(data?.slice(0, 50) ?? []); // Cap at 50 rows
-        const followupMessage = `Query results:\n${resultsJson}\n\nNow provide your final analysis based on these results.`;
+        const resultsJson = JSON.stringify(data?.slice(0, 30) ?? []); // Cap at 30 rows for better context
+        const followupMessage = `DATA RESULTS:\n${resultsJson}\n\nProvide your FINAL ANALYTICS based ONLY on these results.`;
 
         const finalResponse = await callProvider(
             provider,
