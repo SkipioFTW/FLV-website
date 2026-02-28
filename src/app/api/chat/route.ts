@@ -9,6 +9,10 @@ import type { LeagueSnapshot } from '@/lib/ai/snapshot';
  * Body: { message: string, history?: { role: 'user'|'assistant', content: string }[] }
  * Returns: { reply: string }
  */
+// ─── Simple In-Memory Cache ──────────────────────────────────────────
+let cachedSnapshot: { data: LeagueSnapshot, at: number } | null = null;
+const CACHE_TTL = 60 * 1000; // 60 seconds
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -18,32 +22,38 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
         }
 
-        // Enforce message length limit to prevent prompt abuse
         if (message.length > 1000) {
-            return NextResponse.json({ error: 'Message too long (max 1000 characters)' }, { status: 400 });
+            return NextResponse.json({ error: 'Message too long' }, { status: 400 });
         }
 
-        // 1. Load the active snapshot from Supabase
-        const { data: snapRows, error: snapErr } = await supabase
-            .from('league_snapshots')
-            .select('data')
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(1);
+        // 1. Get snapshot (Try cache first)
+        let snapshot: LeagueSnapshot | null = null;
 
-        if (snapErr) {
-            console.error('Snapshot fetch error:', snapErr);
-            return NextResponse.json({ error: 'Failed to load league data' }, { status: 500 });
+        if (cachedSnapshot && (Date.now() - cachedSnapshot.at < CACHE_TTL)) {
+            snapshot = cachedSnapshot.data;
+        } else {
+            const { data: snapRows, error: snapErr } = await supabase
+                .from('league_snapshots')
+                .select('data')
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (snapErr) {
+                console.error('Snapshot fetch error:', snapErr);
+                return NextResponse.json({ error: 'Failed to load league data' }, { status: 500 });
+            }
+
+            if (!snapRows || snapRows.length === 0) {
+                return NextResponse.json(
+                    { error: 'No snapshot available.' },
+                    { status: 503 }
+                );
+            }
+
+            snapshot = snapRows[0].data as LeagueSnapshot;
+            cachedSnapshot = { data: snapshot, at: Date.now() };
         }
-
-        if (!snapRows || snapRows.length === 0) {
-            return NextResponse.json(
-                { error: 'No league data snapshot available. An admin must generate one first.' },
-                { status: 503 }
-            );
-        }
-
-        const snapshot = snapRows[0].data as LeagueSnapshot;
 
         // 2. Validate conversation history
         const validHistory = Array.isArray(history)

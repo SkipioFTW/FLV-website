@@ -237,7 +237,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
     }));
 
     const snapshot = {
-        at: new Date().toISOString(),
+        at: Date.now(),
         ov: { t: activeTeams.length, p: players.length, m: validMatches.length },
         st, ts, ps, ms, as, ld, h2h: [], res,
     };
