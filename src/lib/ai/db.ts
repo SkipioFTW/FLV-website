@@ -32,6 +32,12 @@ export async function executeAIQuery(sql: string): Promise<QueryResult> {
         cleaned = cleaned.replace(/(\bAS\s+[a-z0-9_]+)\.([a-z0-9_]+\b)/gi, '$1_$2');
     }
 
+    // Failsafe: Fix ROUND(AVG(...), 2) missing ::numeric cast (common in Postgres)
+    if (/round\s*\(\s*avg\s*\(.*?\)\s*,\s*\d+\s*\)/i.test(cleaned)) {
+        console.log('[SQL Agent] Auto-fixing missing numeric cast for ROUND...');
+        cleaned = cleaned.replace(/(round\s*\(\s*)(avg\s*\(.*?\))(\s*,\s*\d+\s*\))/gi, '$1$2::numeric$3');
+    }
+
     const lowerCleaned = cleaned.toLowerCase();
 
     // 2. Must start with SELECT or WITH (CTEs: `WITH cte AS (SELECT ...) SELECT ...`)

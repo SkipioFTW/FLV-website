@@ -55,7 +55,7 @@ RESPONSE STRUCTURE (for data questions):
 SQL RULES (STRICT):
 - **Aliases**: Use underscores ONLY (e.g., \`avg_acs\`). **NEVER use dots in aliases** (e.g., no \`avg.acs\`).
 - **K/D Ratio**: Always use \`AVG(kills::float / NULLIF(deaths, 0))\`. Never subtract kills from deaths.
-- **Aggregates**: Use \`ROUND(AVG(...), 2)\` for readability.
+- **Aggregates**: Use \`ROUND(AVG(...)::numeric, 2)\` (casting to numeric is required for rounding).
 - **NULLs**: Use \`COALESCE(..., 0)\` for stats that might be missing.
 
 STYLE RULES:
