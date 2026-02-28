@@ -195,8 +195,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
             };
         })
         .filter((p): p is any => p !== null)
-        .sort((a, b) => b.acs - a.acs)
-        .slice(0, 50); // DEEP SNAPSHOT: Top 50 Players
+        .sort((a, b) => b.acs - a.acs); // ALL ACTIVE PLAYERS
 
     // 4. Meta & Leaders
     const as = Array.from(stats.reduce((acc, s) => {
@@ -206,7 +205,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         acc.set(s.agent, cur); return acc;
     }, new Map()).entries()).map(([n, d]: any) => ({
         n, pr: Math.round((d.g / (validMatches.length * 10)) * 100), acs: Math.round(d.acs / d.g)
-    })).sort((a, b) => b.pr - a.pr).slice(0, 10); // DEEP SNAPSHOT: Top 10 Agents
+    })).sort((a, b) => b.pr - a.pr).slice(0, 15); // Top 15 agents
 
     const ld = {
         acs: ps.slice(0, 5).map(p => ({ n: p.n, v: p.acs })),
@@ -214,16 +213,33 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         ei: [...ps].sort((a, b) => b.ei - a.ei).slice(0, 5).map(p => ({ n: p.n, v: p.ei })),
     };
 
-    // 5. Results (Last 30 matches)
-    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 30).map(m => ({
+    // 5. Results (Last 100 matches)
+    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 100).map(m => ({
         w: m.week, t1: teamTag(m.team1_id), t2: teamTag(m.team2_id),
         s: `${m.score_t1}-${m.score_t2}`, win: teamTag(m.winner_id || 0)
+    }));
+
+    // 6. Map Performance
+    const mapStats = new Map<string, { g: number, w1: number, w2: number }>();
+    matchMaps.forEach(mm => {
+        const cur = mapStats.get(mm.map_name) || { g: 0, w1: 0, w2: 0 };
+        cur.g++;
+        acc_map_wins: {
+            const match = matches.find(m => m.id === mm.match_id);
+            if (!match) break acc_map_wins;
+            if (mm.winner_id === match.team1_id) cur.w1++;
+            if (mm.winner_id === match.team2_id) cur.w2++;
+        }
+        mapStats.set(mm.map_name, cur);
+    });
+    const ms = Array.from(mapStats.entries()).map(([n, d]) => ({
+        n, g: d.g, wr: Math.round(((d.w1 + d.w2) / d.g) * 100)
     }));
 
     const snapshot = {
         at: new Date().toISOString(),
         ov: { t: activeTeams.length, p: players.length, m: validMatches.length },
-        st, ts, ps, ms: [], as, ld, h2h: [], res,
+        st, ts, ps, ms, as, ld, h2h: [], res,
     };
 
     return {
