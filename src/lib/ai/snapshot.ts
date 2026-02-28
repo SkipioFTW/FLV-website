@@ -75,6 +75,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
     const playerById = new Map(players.map((p: any) => [p.id, p]));
     const teamTag = (id: number) => teamById.get(id)?.tag || '??';
     const teamName = (id: number) => teamById.get(id)?.name || 'Unknown';
+    const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
 
     const stats = statsRaw.filter((s: any) => completedIds.has(s.match_id));
     const rounds = roundsRaw.filter((r: any) => completedIds.has(r.match_id));
@@ -199,9 +200,6 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         .filter((p): p is any => p !== null)
         .sort((a, b) => b.a - a.a);
 
-    const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
-
-    // 4. Meta & Leaders
     const as = Array.from(stats.reduce((acc, s) => {
         if (!s.agent) return acc;
         const cur = acc.get(s.agent) || { g: 0, acs: 0 };
@@ -242,7 +240,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         ps,
         st: st.map((group: any) => ({
             g: group.g,
-            t: group.t.map((s: any) => ({ r: s.r, n: s.n, t: s.t, w: s.w, l: s.l, p: s.p, pa: s.pa, pd: s.pd }))
+            t: group.teams.map((s: any) => ({ r: s.r, n: s.n, t: s.g, w: s.w, l: s.l, p: s.p, pa: s.pa, pd: s.pd }))
         })),
         ts: ts.map(t => ({ t: t.t, rd: t.rd, pw: t.p_wr, rw: t.r_wr })),
         ms, as, ld, res,
