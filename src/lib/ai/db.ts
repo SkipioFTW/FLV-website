@@ -21,13 +21,16 @@ export interface QueryResult {
 export async function executeAIQuery(sql: string): Promise<QueryResult> {
     const normalized = sql.trim().toLowerCase();
 
-    // 1. Must start with SELECT or WITH (CTEs: `WITH cte AS (SELECT ...) SELECT ...`)
-    if (!normalized.startsWith('select') && !normalized.startsWith('with')) {
+    // 1. Strip leading comments and whitespace to find the actual start of the query
+    const cleaned = normalized.replace(/^(--.*|[\s\n\r])+/g, '').trim();
+
+    // 2. Must start with SELECT or WITH (CTEs: `WITH cte AS (SELECT ...) SELECT ...`)
+    if (!cleaned.startsWith('select') && !cleaned.startsWith('with')) {
         return { data: null, error: 'Security Error: Only SELECT/WITH queries are allowed.' };
     }
 
-    // 1b. If it starts with WITH, ensure it actually does a SELECT
-    if (normalized.startsWith('with') && !normalized.includes('select')) {
+    // 2b. If it starts with WITH, ensure it actually does a SELECT
+    if (cleaned.startsWith('with') && !cleaned.includes('select')) {
         return { data: null, error: 'Security Error: WITH query must contain a SELECT.' };
     }
 
@@ -41,14 +44,21 @@ export async function executeAIQuery(sql: string): Promise<QueryResult> {
     }
 
     // 3. Limit query size to prevent abuse
-    if (sql.length > 2000) {
-        return { data: null, error: 'Security Error: Query is too long (> 2000 chars).' };
+    if (sql.length > 2500) {
+        return { data: null, error: 'Security Error: Query is too long (> 2500 chars).' };
     }
 
     try {
+        console.log(`[SQL Agent] Executing: ${sql.slice(0, 100)}...`);
         // Call the server-side function (created in Supabase SQL editor)
         const { data, error } = await supabase.rpc('exec_sql', { query_text: sql });
-        if (error) throw error;
+
+        if (error) {
+            // Include the SQL in the error message for debugging
+            const snippet = sql.length > 300 ? sql.slice(0, 300) + '...' : sql;
+            return { data: null, error: `DB Error: ${error.message}\n\nREJECTED SQL:\n${snippet}` };
+        }
+
         return { data: Array.isArray(data) ? data : [], error: null };
     } catch (err: any) {
         console.error('AI SQL Error:', err.message);
