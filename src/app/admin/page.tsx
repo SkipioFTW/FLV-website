@@ -1815,6 +1815,12 @@ function SnapshotManager() {
                                         <span className="text-[10px] text-foreground/40 font-black uppercase">Created By</span>
                                         <span className="text-xs text-foreground/60">{status.generated_by}</span>
                                     </div>
+                                    <div className="flex justify-between border-t border-white/5 pt-2 mt-2">
+                                        <span className="text-[10px] text-val-blue font-black uppercase">Context Weight</span>
+                                        <span className="text-xs font-bold text-val-blue">
+                                            {status.data?.size ? `${(status.data.size / 1024).toFixed(1)} KB` : 'Unknown'}
+                                        </span>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="text-xs font-bold text-val-red/60 italic uppercase tracking-widest">No active snapshot found</div>

@@ -47,8 +47,8 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
             ok: true,
-            generated_at: snapshot.generated_at,
-            overview: snapshot.overview,
+            at: snapshot.at,
+            ov: snapshot.ov,
         });
     } catch (err: any) {
         console.error('Snapshot generation error:', err);
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     try {
         const { data, error } = await supabaseServer
             .from('league_snapshots')
-            .select('id, created_at, is_active, generated_by')
+            .select('id, created_at, is_active, generated_by, data')
             .eq('is_active', true)
             .limit(1);
 
