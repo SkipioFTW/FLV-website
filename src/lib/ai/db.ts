@@ -19,18 +19,21 @@ export interface QueryResult {
  * Throws if the query is not a SELECT or contains dangerous keywords.
  */
 export async function executeAIQuery(sql: string): Promise<QueryResult> {
-    const normalized = sql.trim().toLowerCase();
-
-    // 1. Strip leading comments and whitespace to find the actual start of the query
-    const cleaned = normalized.replace(/^(--.*|[\s\n\r])+/g, '').trim();
+    // 1. Clean up the query: strip leading comments, whitespace, and trailing semicolons
+    const normalized = sql.trim();
+    const cleaned = normalized
+        .replace(/^(--.*|[\s\n\r])+/g, '') // strip leading comments/whitespace
+        .replace(/;+$/, '')                // strip trailing semicolons
+        .trim();
+    const lowerCleaned = cleaned.toLowerCase();
 
     // 2. Must start with SELECT or WITH (CTEs: `WITH cte AS (SELECT ...) SELECT ...`)
-    if (!cleaned.startsWith('select') && !cleaned.startsWith('with')) {
+    if (!lowerCleaned.startsWith('select') && !lowerCleaned.startsWith('with')) {
         return { data: null, error: 'Security Error: Only SELECT/WITH queries are allowed.' };
     }
 
     // 2b. If it starts with WITH, ensure it actually does a SELECT
-    if (cleaned.startsWith('with') && !cleaned.includes('select')) {
+    if (lowerCleaned.startsWith('with') && !lowerCleaned.includes('select')) {
         return { data: null, error: 'Security Error: WITH query must contain a SELECT.' };
     }
 
