@@ -71,32 +71,38 @@ export async function chatWithAI(
     // Build the context block (compact JSON)
     const snapshotJson = JSON.stringify(snapshot);
 
+    const aiModelEnv = process.env.AI_MODEL;
+
     try {
         if (provider === 'gemini') {
-            return await callGemini(apiKey, snapshotJson, userMessage, conversationHistory);
+            const model = (aiModelEnv && aiModelEnv.includes('gemini')) ? aiModelEnv : 'gemini-2.0-flash';
+            return await callGemini(apiKey, snapshotJson, userMessage, conversationHistory, model);
         } else if (provider === 'groq') {
+            const model = (aiModelEnv && (aiModelEnv.includes('llama') || aiModelEnv.includes('mixtral'))) ? aiModelEnv : 'llama-3.1-8b-instant';
             return await callOpenAICompatible(
                 'https://api.groq.com/openai/v1/chat/completions',
                 apiKey,
-                process.env.AI_MODEL || 'llama-3.1-8b-instant',
+                model,
                 snapshotJson,
                 userMessage,
                 conversationHistory
             );
         } else if (provider === 'mistral') {
+            const model = (aiModelEnv && aiModelEnv.includes('mistral')) ? aiModelEnv : 'mistral-small-latest';
             return await callOpenAICompatible(
                 'https://api.mistral.ai/v1/chat/completions',
                 apiKey,
-                process.env.AI_MODEL || 'mistral-small-latest',
+                model,
                 snapshotJson,
                 userMessage,
                 conversationHistory
             );
         } else if (provider === 'deepseek') {
+            const model = (aiModelEnv && aiModelEnv.includes('deepseek')) ? aiModelEnv : 'deepseek-chat';
             return await callOpenAICompatible(
                 'https://api.deepseek.com/chat/completions',
                 apiKey,
-                process.env.AI_MODEL || 'deepseek-chat',
+                model,
                 snapshotJson,
                 userMessage,
                 conversationHistory
@@ -104,7 +110,7 @@ export async function chatWithAI(
         } else {
             // Generic OpenAI-compatible endpoint
             const baseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1/chat/completions';
-            const model = process.env.AI_MODEL || 'gpt-4o-mini';
+            const model = aiModelEnv || 'gpt-4o-mini';
             return await callOpenAICompatible(baseUrl, apiKey, model, snapshotJson, userMessage, conversationHistory);
         }
     } catch (err: any) {
@@ -128,9 +134,9 @@ async function callGemini(
     apiKey: string,
     snapshotJson: string,
     userMessage: string,
-    history: ChatMessage[]
+    history: ChatMessage[],
+    model: string = 'gemini-2.0-flash'
 ): Promise<ChatResponse> {
-    const model = process.env.AI_MODEL || 'gemini-2.0-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     // Build conversation contents
