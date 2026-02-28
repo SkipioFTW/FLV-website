@@ -92,6 +92,15 @@ export async function chatWithAI(
                 userMessage,
                 conversationHistory
             );
+        } else if (provider === 'deepseek') {
+            return await callOpenAICompatible(
+                'https://api.deepseek.com/chat/completions',
+                apiKey,
+                process.env.AI_MODEL || 'deepseek-chat',
+                snapshotJson,
+                userMessage,
+                conversationHistory
+            );
         } else {
             // Generic OpenAI-compatible endpoint
             const baseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1/chat/completions';
@@ -100,10 +109,12 @@ export async function chatWithAI(
         }
     } catch (err: any) {
         console.error('AI chat error:', err);
-        const isQuotaError = err.message?.includes('429') || err.message?.includes('quota');
-        if (isQuotaError) {
+        const isQuotaError = err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('rate_limit_exceeded');
+        const isTPMError = err.message?.includes('TPM') || err.message?.includes('tokens per minute');
+
+        if (isQuotaError || isTPMError) {
             return {
-                reply: "⚠️ **Quota Exceeded.** This snapshot is too large for your current model's free limits.\n\n**Solutions:**\n1. Use **Mistral** (Free tier allows 1M tokens/min). Set `AI_PROVIDER=mistral`.\n2. Use **Groq Llama 8B** (Set `AI_MODEL=llama-3.1-8b-instant`).\n3. Wait 60 seconds and try again.",
+                reply: "⚠️ **Context Too Large for Provider.** Your current provider (Groq/Gemini Free) has a tiny 'Tokens Per Minute' limit that cannot handle the 'All Players' snapshot.\n\n**Best Solution (100% Free):**\nSwitch to **Mistral AI**. Their free tier allows **1,000,000 tokens per minute**.\n1. Get a key at [console.mistral.ai](https://console.mistral.ai)\n2. Set `AI_PROVIDER=mistral` and `AI_API_KEY=your_key` in your variables.\n\n**Best Solution (Paid/Penny):**\nUse **DeepSeek**. It is $0.14 per 1M tokens ($1 lasts a lifetime). Set `AI_PROVIDER=deepseek`.",
                 error: err.message
             };
         }
