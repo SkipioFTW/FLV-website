@@ -78,7 +78,16 @@ export async function chatWithAI(
             return await callOpenAICompatible(
                 'https://api.groq.com/openai/v1/chat/completions',
                 apiKey,
-                process.env.AI_MODEL || 'llama-3.3-70b-versatile',
+                process.env.AI_MODEL || 'llama-3.1-8b-instant',
+                snapshotJson,
+                userMessage,
+                conversationHistory
+            );
+        } else if (provider === 'mistral') {
+            return await callOpenAICompatible(
+                'https://api.mistral.ai/v1/chat/completions',
+                apiKey,
+                process.env.AI_MODEL || 'mistral-small-latest',
                 snapshotJson,
                 userMessage,
                 conversationHistory
@@ -92,9 +101,9 @@ export async function chatWithAI(
     } catch (err: any) {
         console.error('AI chat error:', err);
         const isQuotaError = err.message?.includes('429') || err.message?.includes('quota');
-        if (isQuotaError && provider === 'gemini') {
+        if (isQuotaError) {
             return {
-                reply: "⚠️ **Gemini Quota Exceeded.** The Google AI free tier is currently overloaded in your region. \n\n**Recommendation:** Switch to **Groq** for better stability. It's free and faster. \n1. Get a key at [console.groq.com](https://console.groq.com) \n2. Set `AI_PROVIDER=groq` and `AI_API_KEY=your_groq_key` in your variables.",
+                reply: "⚠️ **Quota Exceeded.** This snapshot is too large for your current model's free limits.\n\n**Solutions:**\n1. Use **Mistral** (Free tier allows 1M tokens/min). Set `AI_PROVIDER=mistral`.\n2. Use **Groq Llama 8B** (Set `AI_MODEL=llama-3.1-8b-instant`).\n3. Wait 60 seconds and try again.",
                 error: err.message
             };
         }

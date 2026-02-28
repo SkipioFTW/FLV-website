@@ -195,7 +195,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
             };
         })
         .filter((p): p is any => p !== null)
-        .sort((a, b) => b.acs - a.acs); // ALL ACTIVE PLAYERS
+        .sort((a, b) => b.acs - a.acs); // FULL DEPTH: All active players
 
     // 4. Meta & Leaders
     const as = Array.from(stats.reduce((acc, s) => {
@@ -213,7 +213,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         ei: [...ps].sort((a, b) => b.ei - a.ei).slice(0, 5).map(p => ({ n: p.n, v: p.ei })),
     };
 
-    // 5. Results (Last 100 matches)
+    // 5. Results (Deep History: Last 100 matches)
     const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 100).map(m => ({
         w: m.week, t1: teamTag(m.team1_id), t2: teamTag(m.team2_id),
         s: `${m.score_t1}-${m.score_t2}`, win: teamTag(m.winner_id || 0)
