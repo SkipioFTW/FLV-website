@@ -52,13 +52,13 @@ export async function executeAIQuery(sql: string): Promise<QueryResult> {
     }
 
     try {
-        console.log(`[SQL Agent] Executing: ${sql.slice(0, 100)}...`);
+        console.log(`[SQL Agent] Executing: ${cleaned.slice(0, 100)}...`);
         // Call the server-side function (created in Supabase SQL editor)
-        const { data, error } = await supabase.rpc('exec_sql', { query_text: sql });
+        const { data, error } = await supabase.rpc('exec_sql', { query_text: cleaned });
 
         if (error) {
             // Include the SQL in the error message for debugging
-            const snippet = sql.length > 300 ? sql.slice(0, 300) + '...' : sql;
+            const snippet = cleaned.length > 300 ? cleaned.slice(0, 300) + '...' : cleaned;
             return { data: null, error: `DB Error: ${error.message}\n\nREJECTED SQL:\n${snippet}` };
         }
 
