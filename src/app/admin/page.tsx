@@ -21,7 +21,7 @@ import type { PendingMatch, PendingPlayer, MatchEntry } from "@/lib/data";
 import type { PlayoffMatch } from "@/lib/data";
 
 export default function AdminPage() {
-    const [activeTab, setActiveTab] = useState<'pending' | 'schedule' | 'playoffs' | 'editor' | 'players'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'schedule' | 'playoffs' | 'editor' | 'players' | 'snapshot'>('pending');
     const [pending, setPending] = useState<{ matches: PendingMatch[], players: PendingPlayer[] }>({ matches: [], players: [] });
     const [matches, setMatches] = useState<MatchEntry[]>([]);
     const [playoffMatches, setPlayoffMatches] = useState<PlayoffMatch[]>([]);
@@ -160,7 +160,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="flex glass p-1 rounded-lg">
-                        {(['pending', 'schedule', 'playoffs', 'editor', 'players'] as const).map((tab) => (
+                        {(['pending', 'schedule', 'playoffs', 'editor', 'players', 'snapshot'] as const).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -169,7 +169,7 @@ export default function AdminPage() {
                                     : 'text-foreground/40 hover:text-foreground/80'
                                     }`}
                             >
-                                {tab}
+                                {tab === 'snapshot' ? 'AI ANALYST' : tab}
                                 {tab === 'pending' && (pending.matches.length + pending.players.length > 0) && (
                                     <span className="ml-2 px-1.5 py-0.5 bg-white text-val-red rounded-full text-[10px]">
                                         {pending.matches.length + pending.players.length}
@@ -359,6 +359,9 @@ export default function AdminPage() {
                         )}
                         {activeTab === 'players' && (
                             <PlayersAdmin />
+                        )}
+                        {activeTab === 'snapshot' && (
+                            <SnapshotManager />
                         )}
                     </div>
                 )}
@@ -1726,5 +1729,138 @@ function PlayersAdmin() {
                 </div>
             </div>
         </section>
+    );
+}
+
+/**
+ * Snapshot Manager Component
+ * Allows admins to generate the JSON snapshot for the AI Analyst
+ */
+function SnapshotManager() {
+    const [status, setStatus] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const loadSnapshot = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/admin/snapshot/generate');
+            const data = await res.json();
+            setStatus(data.snapshot);
+            setError(null);
+        } catch (e) {
+            setError("Failed to load snapshot status");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGenerate = async () => {
+        if (!confirm("Generate a fresh league snapshot? This will take a few seconds and update the AI context.")) return;
+        setGenerating(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/admin/snapshot/generate', { method: 'POST' });
+            const data = await res.json();
+            if (data.ok) {
+                await loadSnapshot();
+                alert("Snapshot generated successfully!");
+            } else {
+                setError(data.error || "Failed to generate snapshot");
+            }
+        } catch (e) {
+            setError("Request failed");
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    useEffect(() => { loadSnapshot(); }, []);
+
+    return (
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="glass p-8 space-y-6">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h3 className="font-display text-2xl font-black text-val-blue uppercase italic">AI Analyst Context Manager</h3>
+                        <p className="text-[10px] text-foreground/40 font-bold uppercase tracking-widest mt-1">
+                            Aggregate league data into a JSON snapshot for the LLM
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest ${status?.is_active ? 'bg-green-500/20 text-green-400' : 'bg-val-red/20 text-val-red'}`}>
+                            {status?.is_active ? '● AI LIVE' : '○ AI OFFLINE'}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-8 py-4">
+                    <div className="space-y-4">
+                        <div className="custom-card glass bg-white/5 p-6 border-l-2 border-val-blue">
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-val-blue mb-4">Current Snapshot</h4>
+                            {loading ? (
+                                <div className="animate-pulse text-xs font-bold text-foreground/20">FETCHING STATUS...</div>
+                            ) : status ? (
+                                <div className="space-y-2">
+                                    <div className="flex justify-between">
+                                        <span className="text-[10px] text-foreground/40 font-black uppercase">ID</span>
+                                        <span className="text-xs font-mono text-foreground/60">#{status.id.split('-')[0]}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-[10px] text-foreground/40 font-black uppercase">Generated At</span>
+                                        <span className="text-xs text-foreground/60">{new Date(status.created_at).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-[10px] text-foreground/40 font-black uppercase">Created By</span>
+                                        <span className="text-xs text-foreground/60">{status.generated_by}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-xs font-bold text-val-red/60 italic uppercase tracking-widest">No active snapshot found</div>
+                            )}
+                        </div>
+
+                        {error && (
+                            <div className="glass bg-val-red/10 border border-val-red/20 p-4 text-val-red text-[10px] font-black uppercase tracking-widest">
+                                ⚠️ {error}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col justify-center space-y-4">
+                        <button
+                            disabled={generating}
+                            onClick={handleGenerate}
+                            className="w-full py-4 bg-val-red text-white font-display font-black uppercase tracking-widest text-sm rounded shadow-[0_0_30px_rgba(255,70,85,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                            {generating ? "AGGREGATING DATA..." : "GENERATE FRESH SNAPSHOT"}
+                        </button>
+                        <p className="text-[10px] text-center text-foreground/30 font-bold uppercase tracking-widest leading-normal">
+                            This will query all teams, players, matches, rounds, and stats to build a massive context object.
+                            Recommended after every match day.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="border-t border-white/5 pt-6">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-4">Safety & Technical details</h4>
+                    <div className="grid md:grid-cols-3 gap-4">
+                        <div className="text-[9px] text-foreground/40 font-medium uppercase tracking-wider leading-relaxed">
+                            <strong className="text-val-blue block mb-1">Deep Aggregation</strong>
+                            Combines standings, team performance, player advanced stats, map pick rates, and head-to-head records.
+                        </div>
+                        <div className="text-[9px] text-foreground/40 font-medium uppercase tracking-wider leading-relaxed">
+                            <strong className="text-val-blue block mb-1">Privacy First</strong>
+                            Sensitive data like Discord IDs, real names, and IP addresses are automatically excluded from the snapshot.
+                        </div>
+                        <div className="text-[9px] text-foreground/40 font-medium uppercase tracking-wider leading-relaxed">
+                            <strong className="text-val-blue block mb-1">Cost Efficient</strong>
+                            AI only reads the JSONB snapshot, reducing Supabase query overhead and avoiding dynamic SQL.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }

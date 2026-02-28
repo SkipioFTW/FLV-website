@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Orbitron, Montserrat } from "next/font/google";
 import "./globals.css";
 import ActivityTracker from "@/components/ActivityTracker";
+import AIAnalyst from "@/components/AIAnalyst";
 
 const orbitron = Orbitron({
   variable: "--font-orbitron",
@@ -37,6 +38,9 @@ export default function RootLayout({
           <main className="relative z-10">
             {children}
           </main>
+
+          {/* AI League Analyst */}
+          <AIAnalyst />
 
           {/* Background Ambient Glows */}
           <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
