@@ -180,21 +180,26 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         playerAgg.set(s.player_id, d);
     });
 
-    const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+    // 7. Final Polish: Team Map (To save bytes in player stats)
+    const teamList = activeTeams.map(t => t.tag);
+    const getTeamIdx = (tag: string) => teamList.indexOf(tag);
+
     const ps = Array.from(playerAgg.entries())
         .map(([pid, d]) => {
             const p = playerById.get(pid);
             if (!p || d.m.size === 0) return null;
             return {
-                n: p.name, t: teamTag(p.default_team_id || 0), m: d.m.size,
-                acs: avg(d.acs), kd: d.d > 0 ? Number((d.k / d.d).toFixed(2)) : d.k,
-                adr: avg(d.adr), kast: avg(d.kast), hs: avg(d.hs),
-                ei: d.fk - d.fd, c: d.c,
-                ag: Array.from(d.ag.entries()).map(([n, a]: any) => ({ n, g: a.g, w: Math.round((a.w / a.g) * 100) })).sort((a, b) => b.g - a.g).slice(0, 2)
+                n: p.name, t: getTeamIdx(teamTag(p.default_team_id || 0)), m: d.m.size,
+                a: avg(d.acs), k: d.d > 0 ? Number((d.k / d.d).toFixed(2)) : d.k,
+                d: avg(d.adr), s: avg(d.kast), h: avg(d.hs),
+                e: d.fk - d.fd, c: d.c,
+                g: Array.from(d.ag.entries()).map(([n, a]: any) => ({ n, g: a.g, w: Math.round((a.w / a.g) * 100) })).sort((a, b) => b.g - a.g).slice(0, 2)
             };
         })
         .filter((p): p is any => p !== null)
-        .sort((a, b) => b.acs - a.acs);
+        .sort((a, b) => b.a - a.a);
+
+    const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
 
     // 4. Meta & Leaders
     const as = Array.from(stats.reduce((acc, s) => {
@@ -203,32 +208,29 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         cur.g++; cur.acs += s.acs || 0;
         acc.set(s.agent, cur); return acc;
     }, new Map()).entries()).map(([n, d]: any) => ({
-        n, pr: Math.round((d.g / (validMatches.length * 10)) * 100), acs: Math.round(d.acs / d.g)
+        n, pr: Math.round((d.g / (validMatches.length * 10)) * 100), a: Math.round(d.acs / d.g)
     })).sort((a, b) => b.pr - a.pr).slice(0, 10);
 
     const ld = {
-        acs: ps.slice(0, 5).map(p => ({ n: p.n, v: p.acs })),
-        kd: [...ps].sort((a, b) => b.kd - a.kd).slice(0, 5).map(p => ({ n: p.n, v: p.kd })),
-        ei: [...ps].sort((a, b) => (b.ei || 0) - (a.ei || 0)).slice(0, 5).map(p => ({ n: p.n, v: p.ei })),
+        a: ps.slice(0, 5).map(p => ({ n: p.n, v: p.a })),
+        k: [...ps].sort((a, b) => b.k - a.k).slice(0, 5).map(p => ({ n: p.n, v: p.k })),
+        e: [...ps].sort((a, b) => (b.e || 0) - (a.e || 0)).slice(0, 5).map(p => ({ n: p.n, v: p.e })),
     };
 
-    // 5. Results (Reduced to last 30 matches to save tokens)
-    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 30).map(m => ({
+    // 5. Results (Last 20 to keep under 6K TPM)
+    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 20).map(m => ({
         w: m.week, t1: teamTag(m.team1_id), t2: teamTag(m.team2_id),
         s: `${m.score_t1}-${m.score_t2}`, win: teamTag(m.winner_id || 0)
     }));
 
-    // 6. Map Performance (Only for completed matches)
+    // 6. Map Performance
     const mapStats = new Map<string, { g: number, w: number, tr: number }>();
     matchMaps.forEach(mm => {
         const match = matches.find(m => m.id === mm.match_id);
-        if (!match) return; // Only count completed matches
-
+        if (!match) return;
         const cur = mapStats.get(mm.map_name) || { g: 0, w: 0, tr: 0 };
-        cur.g++;
-        cur.tr += (mm.score_t1 || 0) + (mm.score_t2 || 0);
+        cur.g++; cur.tr += (mm.score_t1 || 0) + (mm.score_t2 || 0);
         if (mm.winner_id && mm.winner_id !== 0) cur.w++;
-
         mapStats.set(mm.map_name, cur);
     });
     const ms = Array.from(mapStats.entries()).map(([n, d]) => ({
@@ -236,9 +238,14 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
     })).sort((a, b) => b.g - a.g);
 
     const snapshot = {
-        at: Date.now(),
-        ov: { t: activeTeams.length, p: players.length, m: validMatches.length },
-        st, ts, ps, ms, as, ld, h2h: [], res,
+        tm: teamList,
+        ps,
+        st: st.map((group: any) => ({
+            g: group.g,
+            t: group.t.map((s: any) => ({ r: s.r, n: s.n, t: s.t, w: s.w, l: s.l, p: s.p, pa: s.pa, pd: s.pd }))
+        })),
+        ts: ts.map(t => ({ t: t.t, rd: t.rd, pw: t.p_wr, rw: t.r_wr })),
+        ms, as, ld, res,
     };
 
     return {

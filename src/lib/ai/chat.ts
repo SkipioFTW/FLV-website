@@ -28,18 +28,19 @@ STYLE RULES:
 - Keep total response length under 150 words.
 
 LEAGUE DATA COMPACT KEY REFERENCE:
-- ov: overview (t: teams, p: players, m: matches)
-- st: standings (g: group, r: rank, n: name, t: tag, w: wins, l: losses, p: points, pa: points against, pd: point diff)
-- ts: team_stats (n: name, t: tag, rd: round diff, p_wr: pistol win rate%, r_wr: round win rate%)
-- ps: player_stats (n: name, t: team tag, m: matches played, acs: avg acs, k: kills, d: deaths, a: assists, kd: k/d ratio, adr: avg adr, kast: kast%, hs: hs%, fk: first kills, fd: first deaths, ei: entry impact, c: clutches, ag: top agents used with games and winrate%)
-- ms: map_stats (n: name, g: games played, wr: win rate%)
-- ld: leaders (acs: top acs, kd: top k/d, ei: top entry impact)
-- as: agent_stats (n: name, pr: pick rate%, acs: avg acs)
+- tm: team mapping array (e.g. ["UNC", "GT"]). Use indices to find team names.
+- ps: player_stats (n: name, t: team_idx, m: matches, a: acs, k: k/d, d: adr, s: kast, h: hs%, e: entry impact, c: clutches, g: agents used with games and winrate%)
+- st: standings (g: group_name, t: [r: rank, n: name, t: tag, w: wins, l: losses, p: points, pa: points against, pd: point diff])
+- ts: team_stats (t: tag, rd: round diff, pw: pistol win rate%, rw: round win rate%)
+- ms: map_stats (n: name, g: games, wr: win rate%, tr: total rounds)
+- as: agent_stats (n: name, pr: pick rate%, a: avg acs)
+- ld: leaders (a: top acs, k: top k/d, e: top entry impact)
 - res: recent_results (w: week, t1: team 1, t2: team 2, s: score, win: winner tag)
 
 RULES:
 - Use the COMPACT KEY REFERENCE above to interpret the league snapshot provided below.
 - You MUST ONLY answer using the provided league data snapshot.
+- If a player stats reference a team index (t: 0), look up index 0 in the 'tm' array to get the tag.
 - Respond in the user's language.`;
 
 interface ChatMessage {
