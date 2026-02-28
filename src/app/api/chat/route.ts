@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
         const result = await chatWithAI(message.trim(), snapshot, validHistory);
 
         if (result.error) {
+            // If we have a recovery reply (e.g. 429 instructions), return it as a success response
+            if (result.reply) {
+                return NextResponse.json({ reply: result.reply, error: result.error });
+            }
             return NextResponse.json({ error: result.error }, { status: 500 });
         }
 

@@ -187,15 +187,14 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
             if (!p || d.m.size === 0) return null;
             return {
                 n: p.name, t: teamTag(p.default_team_id || 0), m: d.m.size,
-                acs: avg(d.acs), k: d.k, d: d.d, a: d.a,
-                kd: d.d > 0 ? Number((d.k / d.d).toFixed(2)) : d.k,
+                acs: avg(d.acs), kd: d.d > 0 ? Number((d.k / d.d).toFixed(2)) : d.k,
                 adr: avg(d.adr), kast: avg(d.kast), hs: avg(d.hs),
-                fk: d.fk, fd: d.fd, ei: d.fk - d.fd, c: d.c,
-                ag: Array.from(d.ag.entries()).map(([n, a]: any) => ({ n, g: a.g, w: Math.round((a.w / a.g) * 100) })).sort((a, b) => b.g - a.g).slice(0, 3)
+                ei: d.fk - d.fd, c: d.c,
+                ag: Array.from(d.ag.entries()).map(([n, a]: any) => ({ n, g: a.g, w: Math.round((a.w / a.g) * 100) })).sort((a, b) => b.g - a.g).slice(0, 2)
             };
         })
         .filter((p): p is any => p !== null)
-        .sort((a, b) => b.acs - a.acs); // FULL DEPTH: All active players
+        .sort((a, b) => b.acs - a.acs);
 
     // 4. Meta & Leaders
     const as = Array.from(stats.reduce((acc, s) => {
@@ -205,36 +204,36 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         acc.set(s.agent, cur); return acc;
     }, new Map()).entries()).map(([n, d]: any) => ({
         n, pr: Math.round((d.g / (validMatches.length * 10)) * 100), acs: Math.round(d.acs / d.g)
-    })).sort((a, b) => b.pr - a.pr).slice(0, 15); // Top 15 agents
+    })).sort((a, b) => b.pr - a.pr).slice(0, 10);
 
     const ld = {
         acs: ps.slice(0, 5).map(p => ({ n: p.n, v: p.acs })),
         kd: [...ps].sort((a, b) => b.kd - a.kd).slice(0, 5).map(p => ({ n: p.n, v: p.kd })),
-        ei: [...ps].sort((a, b) => b.ei - a.ei).slice(0, 5).map(p => ({ n: p.n, v: p.ei })),
+        ei: [...ps].sort((a, b) => (b.ei || 0) - (a.ei || 0)).slice(0, 5).map(p => ({ n: p.n, v: p.ei })),
     };
 
-    // 5. Results (Deep History: Last 100 matches)
-    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 100).map(m => ({
+    // 5. Results (Reduced to last 30 matches to save tokens)
+    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 30).map(m => ({
         w: m.week, t1: teamTag(m.team1_id), t2: teamTag(m.team2_id),
         s: `${m.score_t1}-${m.score_t2}`, win: teamTag(m.winner_id || 0)
     }));
 
-    // 6. Map Performance
-    const mapStats = new Map<string, { g: number, w1: number, w2: number }>();
+    // 6. Map Performance (Only for completed matches)
+    const mapStats = new Map<string, { g: number, w: number, tr: number }>();
     matchMaps.forEach(mm => {
-        const cur = mapStats.get(mm.map_name) || { g: 0, w1: 0, w2: 0 };
+        const match = matches.find(m => m.id === mm.match_id);
+        if (!match) return; // Only count completed matches
+
+        const cur = mapStats.get(mm.map_name) || { g: 0, w: 0, tr: 0 };
         cur.g++;
-        acc_map_wins: {
-            const match = matches.find(m => m.id === mm.match_id);
-            if (!match) break acc_map_wins;
-            if (mm.winner_id === match.team1_id) cur.w1++;
-            if (mm.winner_id === match.team2_id) cur.w2++;
-        }
+        cur.tr += (mm.score_t1 || 0) + (mm.score_t2 || 0);
+        if (mm.winner_id && mm.winner_id !== 0) cur.w++;
+
         mapStats.set(mm.map_name, cur);
     });
     const ms = Array.from(mapStats.entries()).map(([n, d]) => ({
-        n, g: d.g, wr: Math.round(((d.w1 + d.w2) / d.g) * 100)
-    }));
+        n, g: d.g, wr: d.g > 0 ? Math.round((d.w / d.g) * 100) : 0, tr: d.tr
+    })).sort((a, b) => b.g - a.g);
 
     const snapshot = {
         at: Date.now(),

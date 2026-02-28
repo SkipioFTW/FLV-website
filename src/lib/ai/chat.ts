@@ -115,12 +115,13 @@ export async function chatWithAI(
         }
     } catch (err: any) {
         console.error('AI chat error:', err);
-        const isQuotaError = err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('rate_limit_exceeded');
-        const isTPMError = err.message?.includes('TPM') || err.message?.includes('tokens per minute');
+        const errLower = (err.message || '').toLowerCase();
+        const isQuotaError = errLower.includes('429') || errLower.includes('quota') || errLower.includes('rate_limited') || errLower.includes('rate_limit_exceeded');
+        const isTPMError = errLower.includes('tpm') || errLower.includes('tokens per minute');
 
         if (isQuotaError || isTPMError) {
             return {
-                reply: "⚠️ **Context Too Large for Provider.** Your current provider (Groq/Gemini Free) has a tiny 'Tokens Per Minute' limit that cannot handle the 'All Players' snapshot.\n\n**Best Solution (100% Free):**\nSwitch to **Mistral AI**. Their free tier allows **1,000,000 tokens per minute**.\n1. Get a key at [console.mistral.ai](https://console.mistral.ai)\n2. Set `AI_PROVIDER=mistral` and `AI_API_KEY=your_key` in your variables.\n\n**Best Solution (Paid/Penny):**\nUse **DeepSeek**. It is $0.14 per 1M tokens ($1 lasts a lifetime). Set `AI_PROVIDER=deepseek`.",
+                reply: "⚠️ **Monthly/Rate Limit Exceeded.** Your current AI provider (Mistral Free) has hit its limit.\n\n**Solutions:**\n1. **Wait 60 seconds** and try again (if it's a per-minute limit).\n2. **Switch to DeepSeek** for unlimited high-capacity access ($1 lasts months). Set `AI_PROVIDER=deepseek`.\n3. Check if your Mistral **Monthly 1M Token limit** is exhausted.",
                 error: err.message
             };
         }
