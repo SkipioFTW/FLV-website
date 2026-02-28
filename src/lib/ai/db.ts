@@ -21,9 +21,14 @@ export interface QueryResult {
 export async function executeAIQuery(sql: string): Promise<QueryResult> {
     const normalized = sql.trim().toLowerCase();
 
-    // 1. Must start with SELECT
-    if (!normalized.startsWith('select')) {
-        return { data: null, error: 'Security Error: Only SELECT queries are allowed.' };
+    // 1. Must start with SELECT or WITH (CTEs: `WITH cte AS (SELECT ...) SELECT ...`)
+    if (!normalized.startsWith('select') && !normalized.startsWith('with')) {
+        return { data: null, error: 'Security Error: Only SELECT/WITH queries are allowed.' };
+    }
+
+    // 1b. If it starts with WITH, ensure it actually does a SELECT
+    if (normalized.startsWith('with') && !normalized.includes('select')) {
+        return { data: null, error: 'Security Error: WITH query must contain a SELECT.' };
     }
 
     // 2. Block any high-risk keywords
