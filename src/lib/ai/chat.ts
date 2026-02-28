@@ -23,16 +23,15 @@ players (id, name, riot_id, default_team_id)
 matches (id, week, team1_id, team2_id, winner_id, status, match_type, score_t1, score_t2)
 match_maps (match_id, map_index, map_name, team1_rounds, team2_rounds, winner_id)
 match_stats_map (player_id, team_id, match_id, map_index, agent, acs, kills, deaths, assists, adr, kast, hs_pct, fk, fd, clutches)
-standings (id, team_id, wins, losses, points)
+match_rounds (match_id, map_index, round_number, winning_team_id)
 
 KEY NOTES:
-- 'matches.status' = 'completed' for completed games.
-- 'match_type' = 'regular' or 'playoff'.
-- Use JOIN on team_id/player_id to get names.
-- Excluded teams: 'FAT1', 'FAT2' (practice accounts, exclude from analysis).
-- ALL numeric stats in match_stats_map are per-map (not per-player total).
-- For per-player averages, use AVG(acs), AVG(kd), etc.
-- 'score_t1'/'score_t2' in matches = maps won (e.g., 2-1 = Bo3).
+- 'standings' is NOT a table. To get standings, query 'matches' where status = 'completed'.
+- 'matches.score_t1' and 'score_t2' are the number of MAPS won by each team in that match.
+- To find the "Best Team", look at who has the most wins (winner_id) in the 'matches' table.
+- Excluded teams: 'FAT1', 'FAT2' (Always exclude from standings/stats).
+- Player stats (match_stats_map) are per-map. Always use AVG() and GROUP BY player_id.
+- Current Season: S23.
 `;
 
 // ─── System Prompt ──────────────────────────────────────────────────────────
