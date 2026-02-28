@@ -80,6 +80,13 @@ export async function chatWithAI(
         }
     } catch (err: any) {
         console.error('AI chat error:', err);
+        const isQuotaError = err.message?.includes('429') || err.message?.includes('quota');
+        if (isQuotaError && provider === 'gemini') {
+            return {
+                reply: "⚠️ **Gemini Quota Exceeded.** The Google AI free tier is currently overloaded in your region. \n\n**Recommendation:** Switch to **Groq** for better stability. It's free and faster. \n1. Get a key at [console.groq.com](https://console.groq.com) \n2. Set `AI_PROVIDER=groq` and `AI_API_KEY=your_groq_key` in your variables.",
+                error: err.message
+            };
+        }
         return { reply: '', error: err.message || 'Unknown AI error' };
     }
 }

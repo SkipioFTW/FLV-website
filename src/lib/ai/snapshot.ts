@@ -196,7 +196,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         })
         .filter((p): p is any => p !== null)
         .sort((a, b) => b.acs - a.acs)
-        .slice(0, 50); // ONLY TOP 50 PLAYERS to save tokens
+        .slice(0, 20); // ULTRA-COMPACT: Top 20 only
 
     // 4. Meta & Leaders
     const as = Array.from(stats.reduce((acc, s) => {
@@ -206,7 +206,7 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         acc.set(s.agent, cur); return acc;
     }, new Map()).entries()).map(([n, d]: any) => ({
         n, pr: Math.round((d.g / (validMatches.length * 10)) * 100), acs: Math.round(d.acs / d.g)
-    })).sort((a, b) => b.pr - a.pr).slice(0, 10);
+    })).sort((a, b) => b.pr - a.pr).slice(0, 5); // ULTRA-COMPACT: Top 5 agents
 
     const ld = {
         acs: ps.slice(0, 5).map(p => ({ n: p.n, v: p.acs })),
@@ -214,8 +214,8 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
         ei: [...ps].sort((a, b) => b.ei - a.ei).slice(0, 5).map(p => ({ n: p.n, v: p.ei })),
     };
 
-    // 5. Results (Last 30 matches)
-    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 30).map(m => ({
+    // 5. Results (Last 10 matches)
+    const res = validMatches.sort((a, b) => b.id - a.id).slice(0, 10).map(m => ({
         w: m.week, t1: teamTag(m.team1_id), t2: teamTag(m.team2_id),
         s: `${m.score_t1}-${m.score_t2}`, win: teamTag(m.winner_id || 0)
     }));
