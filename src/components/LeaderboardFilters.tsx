@@ -22,10 +22,13 @@ export default function LeaderboardFilters({
     players: LeaderboardPlayer[];
 }) {
     const [minGames, setMinGames] = useState(0);
+    const [selectedRank, setSelectedRank] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: keyof LeaderboardPlayer; direction: 'asc' | 'desc' }>({
         key: 'avg_acs',
         direction: 'desc'
     });
+
+    const ranks = ["All", "Immortal 3/Radiant", "Immortal 1/2", "Ascendant", "Diamond", "Platinum", "Gold", "Silver", "Iron/Bronze", "Unranked"];
 
     const handleSort = (key: keyof LeaderboardPlayer) => {
         setSortConfig((current) => ({
@@ -34,7 +37,11 @@ export default function LeaderboardFilters({
         }));
     };
 
-    const sortedPlayers = [...players]
+    const filteredByRank = selectedRank === 'All'
+        ? players
+        : players.filter(p => p.rank === selectedRank);
+
+    const sortedPlayers = [...filteredByRank]
         .filter((p) => p.matches_played >= minGames)
         .sort((a, b) => {
             const aValue = a[sortConfig.key];
@@ -81,6 +88,22 @@ export default function LeaderboardFilters({
 
     return (
         <div>
+            {/* Rank Selection Tabs */}
+            <div className="mb-8 flex flex-wrap gap-2 justify-center">
+                {ranks.map((rank) => (
+                    <button
+                        key={rank}
+                        onClick={() => setSelectedRank(rank)}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${selectedRank === rank
+                            ? 'bg-val-blue border-val-blue text-white shadow-[0_0_20px_rgba(63,209,255,0.3)]'
+                            : 'bg-white/5 border-white/10 text-foreground/40 hover:text-foreground hover:border-white/20'
+                            }`}
+                    >
+                        {rank}
+                    </button>
+                ))}
+            </div>
+
             {/* Podium Section */}
             <LeaderboardPodium topPlayers={topThree} />
 
@@ -126,60 +149,68 @@ export default function LeaderboardFilters({
                         </tr>
                     </thead>
                     <tbody>
-                        {sortedPlayers.map((player, index) => (
-                            <tr
-                                key={player.id}
-                                className="border-b border-white/5 hover:bg-white/5 transition-colors duration-200"
-                            >
-                                <td className="px-6 py-4">
-                                    <div className="font-display text-lg font-bold text-val-blue/40">
-                                        #{index + 1}
-                                    </div>
-                                </td>
-                                <td className="px-4 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded bg-val-blue/10 flex items-center justify-center text-val-blue font-black text-xs">
-                                            {player.name[0]}
+                        {sortedPlayers.length > 0 ? (
+                            sortedPlayers.map((player, index) => (
+                                <tr
+                                    key={player.id}
+                                    className="border-b border-white/5 hover:bg-white/5 transition-colors duration-200"
+                                >
+                                    <td className="px-6 py-4">
+                                        <div className="font-display text-lg font-bold text-val-blue/40">
+                                            #{index + 1}
                                         </div>
-                                        <div>
-                                            <div className="font-bold text-sm text-foreground">{player.name}</div>
-                                            <div className="text-[10px] text-foreground/40 uppercase tracking-tighter">{player.riot_id}</div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded bg-val-blue/10 flex items-center justify-center text-val-blue font-black text-xs">
+                                                {player.name[0]}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-sm text-foreground">{player.name}</div>
+                                                <div className="text-[10px] text-foreground/40 uppercase tracking-tighter">{player.riot_id}</div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </td>
-                                <td className="px-4 py-4 text-center">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-foreground/60 bg-white/5 px-2 py-1 rounded">
-                                        {player.rank}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-4 text-center">
-                                    <span className="inline-block px-2 py-0.5 rounded bg-val-red/10 text-val-red text-[10px] font-black uppercase tracking-wider">
-                                        {player.team}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-4 text-center text-xs font-bold text-foreground/60">
-                                    {player.matches_played}
-                                </td>
-                                <td className="px-4 py-4 text-center font-display text-lg font-black text-val-blue">
-                                    {player.avg_acs}
-                                </td>
-                                <td className="px-4 py-4 text-center font-bold text-foreground text-sm">
-                                    {player.avg_adr}
-                                </td>
-                                <td className="px-4 py-4 text-center font-bold text-foreground text-sm">
-                                    {player.avg_kast}%
-                                </td>
-                                <td className="px-4 py-4 text-center font-bold text-foreground text-sm">
-                                    {player.avg_hs_pct}%
-                                </td>
-                                <td className={`px-4 py-4 text-center font-black text-sm ${player.kd_ratio >= 1 ? 'text-val-blue' : 'text-val-red/60'}`}>
-                                    {player.kd_ratio.toFixed(2)}
-                                </td>
-                                <td className="px-4 py-4 text-center font-black text-val-blue text-sm">
-                                    {player.total_fk}
+                                    </td>
+                                    <td className="px-4 py-4 text-center">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-foreground/60 bg-white/5 px-2 py-1 rounded">
+                                            {player.rank}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-4 text-center">
+                                        <span className="inline-block px-2 py-0.5 rounded bg-val-red/10 text-val-red text-[10px] font-black uppercase tracking-wider">
+                                            {player.team}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-4 text-center text-xs font-bold text-foreground/60">
+                                        {player.matches_played}
+                                    </td>
+                                    <td className="px-4 py-4 text-center font-display text-lg font-black text-val-blue">
+                                        {player.avg_acs}
+                                    </td>
+                                    <td className="px-4 py-4 text-center font-bold text-foreground text-sm">
+                                        {player.avg_adr}
+                                    </td>
+                                    <td className="px-4 py-4 text-center font-bold text-foreground text-sm">
+                                        {player.avg_kast}%
+                                    </td>
+                                    <td className="px-4 py-4 text-center font-bold text-foreground text-sm">
+                                        {player.avg_hs_pct}%
+                                    </td>
+                                    <td className={`px-4 py-4 text-center font-black text-sm ${player.kd_ratio >= 1 ? 'text-val-blue' : 'text-val-red/60'}`}>
+                                        {player.kd_ratio.toFixed(2)}
+                                    </td>
+                                    <td className="px-4 py-4 text-center font-black text-val-blue text-sm">
+                                        {player.total_fk}
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={11} className="px-6 py-20 text-center text-foreground/40 italic">
+                                    No players found in this rank category matching your criteria.
                                 </td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>
