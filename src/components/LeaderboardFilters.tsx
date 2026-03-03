@@ -4,6 +4,18 @@ import { useState } from 'react';
 import { LeaderboardPlayer } from '@/lib/data';
 import LeaderboardPodium from './LeaderboardPodium';
 
+const rankWeights: Record<string, number> = {
+    "Unranked": 0,
+    "Iron/Bronze": 1,
+    "Silver": 2,
+    "Gold": 3,
+    "Platinum": 4,
+    "Diamond": 5,
+    "Ascendant": 6,
+    "Immortal 1/2": 7,
+    "Immortal 3/Radiant": 8
+};
+
 export default function LeaderboardFilters({
     players,
 }: {
@@ -28,16 +40,24 @@ export default function LeaderboardFilters({
             const aValue = a[sortConfig.key];
             const bValue = b[sortConfig.key];
 
-            if (typeof aValue === 'string' && typeof bValue === 'string') {
-                return sortConfig.direction === 'asc'
-                    ? aValue.localeCompare(bValue)
-                    : bValue.localeCompare(aValue);
-            }
-
             if (typeof aValue === 'number' && typeof bValue === 'number') {
                 return sortConfig.direction === 'asc'
                     ? aValue - bValue
                     : bValue - aValue;
+            }
+
+            if (sortConfig.key === 'rank') {
+                const aWeight = rankWeights[a.rank] ?? -1;
+                const bWeight = rankWeights[b.rank] ?? -1;
+                return sortConfig.direction === 'asc'
+                    ? aWeight - bWeight
+                    : bWeight - aWeight;
+            }
+
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+                return sortConfig.direction === 'asc'
+                    ? aValue.localeCompare(bValue)
+                    : bValue.localeCompare(aValue);
             }
 
             return 0;
@@ -94,6 +114,7 @@ export default function LeaderboardFilters({
                         <tr>
                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest text-foreground/60">Rank</th>
                             <SortHeader label="Player" sortKey="name" align="left" />
+                            <SortHeader label="Peak Rank" sortKey="rank" />
                             <SortHeader label="Team" sortKey="team" />
                             <SortHeader label="Matches" sortKey="matches_played" />
                             <SortHeader label="ACS" sortKey="avg_acs" />
@@ -125,6 +146,11 @@ export default function LeaderboardFilters({
                                             <div className="text-[10px] text-foreground/40 uppercase tracking-tighter">{player.riot_id}</div>
                                         </div>
                                     </div>
+                                </td>
+                                <td className="px-4 py-4 text-center">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-foreground/60 bg-white/5 px-2 py-1 rounded">
+                                        {player.rank}
+                                    </span>
                                 </td>
                                 <td className="px-4 py-4 text-center">
                                     <span className="inline-block px-2 py-0.5 rounded bg-val-red/10 text-val-red text-[10px] font-black uppercase tracking-wider">
@@ -177,6 +203,13 @@ export default function LeaderboardFilters({
                             </div>
                             <span className="inline-block px-3 py-1 rounded-full bg-val-red/10 text-val-red text-[10px] font-black uppercase tracking-wider">
                                 {player.team}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-4">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-foreground/40">Peak Rank:</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-foreground/80 bg-white/5 px-2 py-1 rounded">
+                                {player.rank}
                             </span>
                         </div>
 

@@ -58,6 +58,7 @@ export type LeaderboardPlayer = {
     avg_kast: number;
     avg_hs_pct: number;
     total_fk: number;
+    rank: string;
 };
 
 export type PlayerStats = {
@@ -540,7 +541,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
     try {
         // 1. Fetch all players and teams for lookup
         const [playersRes, teamsRes] = await Promise.all([
-            supabase.from('players').select('id, name, riot_id, default_team_id'),
+            supabase.from('players').select('id, name, riot_id, default_team_id, rank'),
             supabase.from('teams').select('id, tag')
         ]);
 
@@ -670,6 +671,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                     avg_kast: pStats.enhancedMapCount > 0 ? Math.round(pStats.totalKast / pStats.enhancedMapCount) : 0,
                     avg_hs_pct: pStats.enhancedMapCount > 0 ? Math.round(pStats.totalHsPct / pStats.enhancedMapCount) : 0,
                     total_fk: pStats.totalFk,
+                    rank: player.rank || 'Unranked',
                 };
             })
             .filter((p): p is LeaderboardPlayer => p !== null)
