@@ -29,7 +29,9 @@ export default function SummaryPage() {
     setLoading(false);
   };
 
-  const weekMatches = matches.filter(m => m.week === selectedWeek);
+  const weekMatches = selectedWeek === 0
+    ? matches.filter(m => m.match_type === 'playoff')
+    : matches.filter(m => m.week === selectedWeek && m.match_type !== 'playoff');
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -53,6 +55,7 @@ export default function SummaryPage() {
                 onChange={e => setSelectedWeek(parseInt(e.target.value))}
                 className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
               >
+                <option value={0}>Playoffs</option>
                 {[1, 2, 3, 4, 5, 6].map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
             </div>
@@ -89,7 +92,7 @@ export default function SummaryPage() {
                   <a className="hover:text-val-blue underline" href={`/teams?team_id=${details.match.team2.id}`}>{details.match.team2.name}</a>
                 </div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">
-                  Week {details.match.week} • {details.match.group_name} • {details.match.format}
+                  {details.match.match_type === 'playoff' ? 'Playoffs' : `Week ${details.match.week}`} • {details.match.group_name} • {details.match.format}
                 </div>
               </div>
               <div className="mt-2 text-sm text-foreground/60">
@@ -109,8 +112,37 @@ export default function SummaryPage() {
                 </div>
 
                 {/* Economy and Round Chart */}
-                <div className="w-full mt-8 mb-8">
+                <div className="w-full mt-8 mb-4">
                   <EconomyChart rounds={map.rounds || []} team1_id={details.match.team1.id} />
+                </div>
+
+                {/* Round Breakdown */}
+                <div className="glass p-6 mb-8 border border-white/5 rounded">
+                  <h5 className="font-display text-lg font-bold uppercase tracking-wider mb-4">Round Breakdown</h5>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[600px] grid grid-cols-6 gap-4 text-[10px] font-black uppercase tracking-widest text-foreground/40 pb-2 border-b border-white/10">
+                      <div>Round</div>
+                      <div>Winner</div>
+                      <div>Type</div>
+                      <div>Plant/Defuse</div>
+                      <div className="text-right">T1 Economy</div>
+                      <div className="text-right">T2 Economy</div>
+                    </div>
+                    <div className="divide-y divide-white/5 max-h-64 overflow-y-auto pr-2">
+                      {map.rounds?.map((r: any) => (
+                        <div key={r.round_number} className="grid grid-cols-6 gap-4 py-2 text-[11px] items-center">
+                          <div className="font-bold">Round {r.round_number}</div>
+                          <div className={r.winning_team_id === details.match.team1.id ? 'text-val-blue font-bold' : 'text-val-red font-bold'}>
+                            {r.winning_team_id === details.match.team1.id ? details.match.team1.tag : details.match.team2.tag}
+                          </div>
+                          <div className="text-foreground/60">{r.win_type}</div>
+                          <div className="text-foreground/40">{r.plant ? (r.defuse ? "✓ Plant + Defuse" : "✓ Plant") : "-"}</div>
+                          <div className="text-right font-mono text-val-blue/80">${r.economy_t1.toLocaleString()}</div>
+                          <div className="text-right font-mono text-val-red/80">${r.economy_t2.toLocaleString()}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-8">
@@ -131,6 +163,7 @@ export default function SummaryPage() {
                             <div>KAST</div>
                             <div>HS%</div>
                             <div>FK</div>
+                            <div>MK</div>
                             <div>Sub</div>
                           </div>
                           {rows.map((r: any, i: number) => (
@@ -145,6 +178,7 @@ export default function SummaryPage() {
                               <div>{Math.round(r.kast)}%</div>
                               <div>{Math.round(r.hs_pct)}%</div>
                               <div className="text-val-blue font-bold">{r.fk || 0}</div>
+                              <div>{r.mk || 0}</div>
                               <div className={`${r.is_sub ? 'text-val-red' : 'text-foreground/20'}`}>{r.is_sub ? "Sub" : "-"}</div>
                             </div>
                           ))}

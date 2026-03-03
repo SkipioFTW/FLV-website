@@ -1110,8 +1110,9 @@ function ScoreMapEditor() {
     const [winnerId, setWinnerId] = useState<number | null>(null);
     const [team1Rows, setTeam1Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
     const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
-    const [roundsData, setRoundsData] = useState<any[]>([]);
+    const [mapRoundsData, setMapRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
+    const [mapForfeit, setMapForfeit] = useState(false);
     const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O", "Breach", "Chamber", "Clove", "Deadlock", "Fade", "Gekko", "Phoenix", "Veto", "Waylay"];
 
     useEffect(() => {
@@ -1187,7 +1188,8 @@ function ScoreMapEditor() {
             setMapName(out.map_name);
             setT1Rounds(Math.round(out.t1_rounds));
             setT2Rounds(Math.round(out.t2_rounds));
-            setRoundsData(out.rounds);
+            setMapRoundsData(out.rounds);
+            setMapForfeit(false);
             if (out.t1_rounds > out.t2_rounds) setWinnerId(sel.team1.id);
             else if (out.t2_rounds > out.t1_rounds) setWinnerId(sel.team2.id);
 
@@ -1327,7 +1329,7 @@ function ScoreMapEditor() {
                 t1_rounds: t1Rounds,
                 t2_rounds: t2Rounds,
                 winner_id: winnerId,
-                is_forfeit: false
+                is_forfeit: mapForfeit
             }, payloadRows.map(r => ({
                 team_id: r.team_id,
                 player_id: r.player_id as number,
@@ -1348,7 +1350,7 @@ function ScoreMapEditor() {
             })), {
                 pendingId: pendingId || undefined,
                 url: window.localStorage.getItem('auto_selected_match_url') || undefined
-            }, roundsData, playerRoundsData);
+            }, mapRoundsData, playerRoundsData);
 
             window.localStorage.removeItem('auto_selected_match_id');
             window.localStorage.removeItem('pending_match_db_id');
@@ -1451,11 +1453,22 @@ function ScoreMapEditor() {
                         </div>
                         <div className="col-span-3">
                             <label className="text-[8px] font-black uppercase tracking-widest text-foreground/40 block mb-1">Map Name</label>
-                            <select value={mapName} onChange={e => setMapName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs">
-                                {["Unknown", "Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset", "Abyss", "Corrode"].map(m => (
-                                    <option key={m} value={m} className="bg-background">{m}</option>
-                                ))}
-                            </select>
+                            <div className="flex gap-2">
+                                <select value={mapName} onChange={e => setMapName(e.target.value)} className="flex-1 bg-white/5 border border-white/10 rounded p-2 text-xs">
+                                    {["Unknown", "Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset", "Abyss", "Corrode"].map(m => (
+                                        <option key={m} value={m} className="bg-background">{m}</option>
+                                    ))}
+                                </select>
+                                <label className="flex items-center gap-1.5 px-3 bg-white/5 border border-white/10 rounded cursor-pointer hover:bg-white/10 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={mapForfeit}
+                                        onChange={e => setMapForfeit(e.target.checked)}
+                                        className="accent-val-red"
+                                    />
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-foreground/60">Forfeit</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
