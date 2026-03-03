@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { getAllMatches, getMatchDetails } from "@/lib/data";
 import EconomyChart from "@/components/EconomyChart";
+import MatchSearch from "@/components/MatchSearch";
 
 export default function SummaryPage() {
   const [matches, setMatches] = useState<any[]>([]);
@@ -11,7 +12,6 @@ export default function SummaryPage() {
   const [matchId, setMatchId] = useState<number>(0);
   const [details, setDetails] = useState<{ match: any, maps: any[] } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     getAllMatches().then(ms => {
@@ -30,16 +30,6 @@ export default function SummaryPage() {
     setLoading(false);
   };
 
-  const weekMatches = searchQuery.trim()
-    ? matches.filter(m =>
-      m.team1.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.team2.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      String(m.id).includes(searchQuery)
-    )
-    : (selectedWeek === 0
-      ? matches.filter(m => m.match_type === 'playoff')
-      : matches.filter(m => m.week === selectedWeek && m.match_type !== 'playoff'));
-
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
       <Navbar />
@@ -53,50 +43,34 @@ export default function SummaryPage() {
           </p>
         </header>
 
-        <section className="glass p-8 space-y-6">
-          <div className="grid md:grid-cols-4 gap-6">
+        <section className="glass p-8">
+          <div className="grid md:grid-cols-4 gap-6 items-end">
             <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Search Match</label>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Team name or ID..."
-                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Week</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Select Week</label>
               <select
                 value={selectedWeek}
                 onChange={e => setSelectedWeek(parseInt(e.target.value))}
-                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors h-[48px]"
               >
                 <option value={0}>Playoffs</option>
                 {[1, 2, 3, 4, 5, 6].map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
             </div>
             <div className="md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Match</label>
-              <select
-                value={matchId}
-                onChange={e => setMatchId(parseInt(e.target.value))}
-                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
-              >
-                <option value={0}>Select match</option>
-                {weekMatches.map(m => (
-                  <option key={m.id} value={m.id}>ID {m.id}: {m.team1.name} vs {m.team2.name} ({m.group_name})</option>
-                ))}
-              </select>
+              <MatchSearch
+                matches={matches}
+                onSelect={setMatchId}
+                currentId={matchId}
+              />
             </div>
+            <button
+              disabled={!matchId || loading}
+              onClick={loadDetails}
+              className="px-4 h-[48px] bg-val-blue text-white rounded text-xs font-black uppercase tracking-widest hover:bg-val-blue/80 transition-colors disabled:opacity-50"
+            >
+              {loading ? "Loading..." : "View Summary"}
+            </button>
           </div>
-          <button
-            disabled={!matchId || loading}
-            onClick={loadDetails}
-            className="px-4 py-2 bg-val-blue text-white rounded text-xs font-black uppercase tracking-widest"
-          >
-            {loading ? "Loading..." : "Load Summary"}
-          </button>
         </section>
 
         {details?.match && (
