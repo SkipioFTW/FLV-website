@@ -11,6 +11,7 @@ export default function SummaryPage() {
   const [matchId, setMatchId] = useState<number>(0);
   const [details, setDetails] = useState<{ match: any, maps: any[] } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     getAllMatches().then(ms => {
@@ -29,9 +30,15 @@ export default function SummaryPage() {
     setLoading(false);
   };
 
-  const weekMatches = selectedWeek === 0
-    ? matches.filter(m => m.match_type === 'playoff')
-    : matches.filter(m => m.week === selectedWeek && m.match_type !== 'playoff');
+  const weekMatches = searchQuery.trim()
+    ? matches.filter(m =>
+      m.team1.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.team2.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(m.id).includes(searchQuery)
+    )
+    : (selectedWeek === 0
+      ? matches.filter(m => m.match_type === 'playoff')
+      : matches.filter(m => m.week === selectedWeek && m.match_type !== 'playoff'));
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -47,7 +54,17 @@ export default function SummaryPage() {
         </header>
 
         <section className="glass p-8 space-y-6">
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-4 gap-6">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Search Match</label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Team name or ID..."
+                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
+              />
+            </div>
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Week</label>
               <select
