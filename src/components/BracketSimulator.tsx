@@ -16,6 +16,10 @@ interface Match {
     team1: Team;
     team2: Team;
     winner_id?: number | null;
+    status?: string;
+    score_t1?: number;
+    score_t2?: number;
+    format?: string;
 }
 
 interface Props {
@@ -25,6 +29,18 @@ interface Props {
 export default function BracketSimulator({ initialMatches }: Props) {
     const [simulatedWinners, setSimulatedWinners] = useState<Record<string, number>>({}); // "round:pos" -> winnerId
     const [isSimulating, setIsSimulating] = useState(false);
+
+    // Build a map of teams for faster/safer lookup
+    const teamsById = useMemo(() => {
+        const map = new Map<number, Team>();
+        initialMatches.forEach(m => {
+            if (m.team1?.id) map.set(m.team1.id, m.team1);
+            if (m.team2?.id) map.set(m.team2.id, m.team2);
+        });
+        return map;
+    }, [initialMatches]);
+
+    const getTeam = (id: number) => teamsById.get(id) || { id: 0, name: 'TBD', logo: null };
 
     // Persistence
     useEffect(() => {
@@ -58,16 +74,16 @@ export default function BracketSimulator({ initialMatches }: Props) {
 
         // Advance logic
         for (let r = 1; r < 5; r++) {
-            for (let p = 1; p <= rounds[r-1].slots; p++) {
+            for (let p = 1; p <= (rounds[r - 1]?.slots || 0); p++) {
                 const key = `${r}:${p}`;
-                const winnerId = simulatedWinners[key] || matches.get(key)?.winner_id;
+                const match = matches.get(key);
+                if (!match) continue;
+
+                const winnerId = simulatedWinners[key] || match.winner_id;
                 if (!winnerId) continue;
 
-                const winnerTeam = initialMatches.find(m => m.team1.id === winnerId || m.team2.id === winnerId)?.team1.id === winnerId
-                    ? initialMatches.find(m => m.team1.id === winnerId || m.team2.id === winnerId)?.team1
-                    : initialMatches.find(m => m.team1.id === winnerId || m.team2.id === winnerId)?.team2;
-
-                if (!winnerTeam) continue;
+                const winnerTeam = getTeam(winnerId);
+                if (!winnerTeam || winnerTeam.id === 0) continue;
 
                 if (r === 1) {
                     // R1 -> R2 (same bracket_pos)
@@ -91,7 +107,7 @@ export default function BracketSimulator({ initialMatches }: Props) {
         }
 
         return matches;
-    }, [initialMatches, simulatedWinners]);
+    }, [initialMatches, simulatedWinners, teamsById]);
 
     const handlePickWinner = (round: number, pos: number, teamId: number) => {
         setSimulatedWinners(prev => ({
@@ -103,13 +119,8 @@ export default function BracketSimulator({ initialMatches }: Props) {
     const handleAutoSimulate = async () => {
         setIsSimulating(true);
         const newWinners: Record<string, number> = {};
-        const currentSimMatches = new Map<string, any>();
+        const currentSimMatches = new Map<string, Match>();
         initialMatches.forEach(m => currentSimMatches.set(`${m.playoff_round}:${m.bracket_pos}`, { ...m }));
-
-        // We'll need some basic win probabilities.
-        // For client-side auto-sim, we'll fetch them from the API for each match sequentially or use a simplified model.
-        // Simplified model: randomly pick for now, or use a heuristic.
-        // Actually, let's try to be smart and fetch from API for existing matches.
 
         for (let r = 1; r <= 5; r++) {
             const roundSlots = r === 1 ? 8 : r === 2 ? 8 : r === 3 ? 4 : r === 4 ? 2 : 1;
@@ -119,35 +130,48 @@ export default function BracketSimulator({ initialMatches }: Props) {
                 if (!match) continue;
 
                 let winnerId = 0;
+
+                // 1. If match is actually completed in DB, use that winner
                 if (match.status === 'completed' && match.winner_id) {
                     winnerId = match.winner_id;
-                } else if (match.team1.id && match.team2.id) {
-                    // Call API or use heuristic. Heuristic: team with higher ID (random-ish but stable)
-                    // Let's use a simple pseudo-random based on names
-                    const combined = match.team1.name + match.team2.name;
+                }
+                // 2. If simulated, use existing simulation if already set? 
+                // No, handleAutoSimulate should rebuild it fresh based on current teams
+                else if (match.team1?.id && match.team2?.id) {
+                    // Use heuristic: higher ID is pseudo-random but stable
+                    const combined = (match.team1.name || '') + (match.team2.name || '');
                     let hash = 0;
                     for (let i = 0; i < combined.length; i++) hash = combined.charCodeAt(i) + ((hash << 5) - hash);
                     winnerId = (hash % 2 === 0) ? match.team1.id : match.team2.id;
-                } else if (match.team1.id) {
+                } else if (match.team1?.id) {
                     winnerId = match.team1.id;
-                } else if (match.team2.id) {
+                } else if (match.team2?.id) {
                     winnerId = match.team2.id;
                 }
 
-                if (winnerId) {
+                if (winnerId && winnerId !== 0) {
                     newWinners[key] = winnerId;
-                    const winnerTeam = initialMatches.find(m => m.team1.id === winnerId)?.team1 || initialMatches.find(m => m.team2.id === winnerId)?.team2;
-                    if (winnerTeam) {
+                    const winnerTeam = getTeam(winnerId);
+
+                    if (winnerTeam && winnerTeam.id !== 0) {
                         if (r === 1) {
                             const targetKey = `2:${p}`;
-                            const target = currentSimMatches.get(targetKey) || { team1: { id: 0 }, team2: { id: 0 } };
+                            const target = currentSimMatches.get(targetKey) || {
+                                id: 0, playoff_round: 2, bracket_pos: p,
+                                team1: { id: 0, name: 'TBD', logo: null },
+                                team2: { id: 0, name: 'TBD', logo: null }
+                            };
                             target.team2 = winnerTeam;
                             currentSimMatches.set(targetKey, target);
                         } else if (r < 5) {
                             const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
                             const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
                             const targetKey = `${r + 1}:${targetPos}`;
-                            const target = currentSimMatches.get(targetKey) || { team1: { id: 0 }, team2: { id: 0 } };
+                            const target = currentSimMatches.get(targetKey) || {
+                                id: 0, playoff_round: r + 1, bracket_pos: targetPos,
+                                team1: { id: 0, name: 'TBD', logo: null },
+                                team2: { id: 0, name: 'TBD', logo: null }
+                            };
                             if (p < siblingPos) target.team1 = winnerTeam;
                             else target.team2 = winnerTeam;
                             currentSimMatches.set(targetKey, target);
@@ -228,24 +252,24 @@ export default function BracketSimulator({ initialMatches }: Props) {
             </div>
 
             <div className="min-w-[1400px] flex gap-4 px-4 items-stretch pb-12">
-            {rounds.map((round) => (
-                <div key={round.id} className="flex-1 flex flex-col min-w-0" style={{ maxWidth: round.id === 1 ? '180px' : undefined }}>
-                    <h2 className="font-display text-[10px] font-black text-val-blue uppercase italic text-center mb-6 tracking-[0.2em] whitespace-nowrap opacity-60">
-                        {round.name}
-                    </h2>
+                {rounds.map((round) => (
+                    <div key={round.id} className="flex-1 flex flex-col min-w-0" style={{ maxWidth: round.id === 1 ? '180px' : undefined }}>
+                        <h2 className="font-display text-[10px] font-black text-val-blue uppercase italic text-center mb-6 tracking-[0.2em] whitespace-nowrap opacity-60">
+                            {round.name}
+                        </h2>
 
-                    <div className="flex-1 flex flex-col justify-around gap-4">
-                        {Array.from({ length: round.slots }).map((_, idx) => (
-                            <div key={`${round.id}-${idx + 1}`} className="relative">
-                                <MatchCard round={round.id} pos={idx + 1} />
-                                {round.id < 5 && (
-                                    <div className="absolute -right-2 top-1/2 w-2 h-px bg-white/10" />
-                                )}
-                            </div>
-                        ))}
+                        <div className="flex-1 flex flex-col justify-around gap-4">
+                            {Array.from({ length: round.slots }).map((_, idx) => (
+                                <div key={`${round.id}-${idx + 1}`} className="relative">
+                                    <MatchCard round={round.id} pos={idx + 1} />
+                                    {round.id < 5 && (
+                                        <div className="absolute -right-2 top-1/2 w-2 h-px bg-white/10" />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            ))}
+                ))}
             </div>
         </div>
     );
