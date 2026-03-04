@@ -1,0 +1,19 @@
+ID | R | P | Team 1 | Team 2 | Winner | Label
+---|---|---|---|---|---|---
+212 | 1 | 1 | Total Bad Asses | Genius Evils | 14 | R1 #1
+213 | 1 | 2 | Solar Reign | One Designated Driver | 38 | R1 #2
+214 | 1 | 3 | The Vant1c Effect | Ayrox Esports | 4 | R1 #3
+215 | 1 | 4 | DSS Gaming | Gooner Academy | 17 | R1 #4
+216 | 1 | 5 | Frogs | The Zenith | 13 | R1 #5
+217 | 1 | 6 | Misfits | Frag Frogs | 12 | R1 #6
+218 | 1 | 7 | Chumber Mains | ATOR Black | 2 | R1 #7
+219 | 1 | 8 | Nomads | NOT winning | 29 | R1 #8
+220 | 2 | 1 | Just Banana | Genius Evils | - | R2 #1
+221 | 2 | 2 | Team Snoopy | Solar Reign | - | R2 #2
+222 | 2 | 3 | Baguette 5 | Ayrox Esports | - | R2 #3
+223 | 2 | 4 | Lime Green Kia Soul | Gooner Academy | 17 | R2 #4
+224 | 2 | 5 | Great Uncs | Frogs | - | R2 #5
+225 | 2 | 6 | ATOR White | Misfits | - | R2 #6
+226 | 2 | 7 | Seattle Knights | ATOR Black | - | R2 #7
+227 | 2 | 8 | GIN AND TOXIC | NOT winning | - | R2 #8
+268 | 3 | 4 | Gooner Academy | Lime Green Kia Soul | - | R3 #4

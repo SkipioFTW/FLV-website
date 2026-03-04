@@ -133,35 +133,51 @@ export async function POST(req: NextRequest) {
       const round: number = matchInfo.playoff_round || 1;
       const pos: number = matchInfo.bracket_pos || 0;
       if (pos) {
+        let targetPos = pos;
+        let isTeam1 = false; // default for R1 -> R2 (goes into team2/bottom slot)
+
+        if (round >= 2) {
+          const siblingPos = pos % 2 === 1 ? pos + 1 : pos - 1;
+          targetPos = Math.ceil(Math.min(pos, siblingPos) / 2);
+          isTeam1 = pos < siblingPos;
+        } else {
+          // R1 -> R2
+          targetPos = pos;
+          isTeam1 = false;
+        }
+
         const { data: nextMatch } = await supabaseServer
           .from('matches')
           .select('*')
           .eq('match_type', 'playoff')
           .eq('playoff_round', round + 1)
-          .eq('bracket_pos', pos)
+          .eq('bracket_pos', targetPos)
           .limit(1);
+
         if (nextMatch && nextMatch.length > 0) {
           const nm = nextMatch[0];
           const updates: any = {};
-          if (!nm.team1_id) updates.team1_id = winnerTeam;
-          else if (!nm.team2_id) updates.team2_id = winnerTeam;
-          if (updates.team1_id || updates.team2_id) {
-            await supabaseServer.from('matches').update(updates).eq('id', nm.id);
+          if (isTeam1) {
+            updates.team1_id = winnerTeam;
+          } else {
+            updates.team2_id = winnerTeam;
           }
+          await supabaseServer.from('matches').update(updates).eq('id', nm.id);
         } else {
-          await supabaseServer.from('matches').insert({
+          const insertData: any = {
             week: matchInfo.week || 0,
             group_name: 'Playoffs',
-            team1_id: null,
-            team2_id: winnerTeam,
+            team1_id: isTeam1 ? winnerTeam : null,
+            team2_id: isTeam1 ? null : winnerTeam,
             status: 'scheduled',
             format: 'BO3',
             maps_played: 0,
             match_type: 'playoff',
             playoff_round: round + 1,
-            bracket_pos: pos,
-            bracket_label: `R${round + 1} #${pos}`,
-          } as any);
+            bracket_pos: targetPos,
+            bracket_label: `R${round + 1} #${targetPos}`,
+          };
+          await supabaseServer.from('matches').insert(insertData);
         }
       }
     }
