@@ -1113,7 +1113,7 @@ function ScoreMapEditor() {
     const [mapRoundsData, setMapRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
     const [mapForfeit, setMapForfeit] = useState(false);
-    const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O", "Breach", "Chamber", "Clove", "Deadlock", "Fade", "Gekko", "Phoenix", "Veto", "Waylay"];
+    const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O", "Breach", "Chamber", "Clove", "Deadlock", "Fade", "Gekko", "Phoenix", "Veto", "Waylay", "Tejo", "Miks"];
 
     useEffect(() => {
         import("@/lib/data").then(({ getAllMatches }) => {
