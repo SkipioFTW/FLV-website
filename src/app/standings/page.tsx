@@ -1,12 +1,17 @@
-import { getStandings, getMetaAnalytics } from '@/lib/data';
+import { getStandings, getMetaAnalytics, getDefaultSeason } from '@/lib/data';
 import Navbar from '@/components/Navbar';
 import StandingsTabs from '@/components/StandingsTabs';
 
 export const revalidate = 900; // Revalidate every 15 minutes
 
-export default async function StandingsPage() {
-    const groupedStandings = await getStandings();
-    const metaData = await getMetaAnalytics();
+export default async function StandingsPage({
+    searchParams,
+}: {
+    searchParams: { season?: string };
+}) {
+    const seasonId = searchParams.season || await getDefaultSeason();
+    const groupedStandings = await getStandings(seasonId);
+    const metaData = await getMetaAnalytics(seasonId);
 
     return (
         <div className="min-h-screen">
@@ -15,7 +20,7 @@ export default async function StandingsPage() {
             <main className="max-w-7xl mx-auto px-6 pt-32 pb-20">
                 <div className="mb-12">
                     <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3">
-                        <span className="text-val-red">Season 23</span> Standings
+                        <span className="text-val-red">Season {seasonId.replace('S', '')}</span> Standings
                     </h1>
                     <p className="text-foreground/60 text-lg">
                         Current tournament rankings and league-wide meta analytics

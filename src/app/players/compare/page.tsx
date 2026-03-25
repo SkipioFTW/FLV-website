@@ -1,11 +1,16 @@
 import Navbar from '@/components/Navbar';
 import PlayerComparison from '@/components/PlayerComparison';
-import { getPlayers } from '@/lib/data';
+import { getPlayers, getDefaultSeason } from '@/lib/data';
 
 export const revalidate = 900; // Revalidate every 15 minutes
 
-export default async function PlayerComparePage() {
+export default async function PlayerComparePage({
+    searchParams,
+}: {
+    searchParams: { season?: string };
+}) {
     const players = await getPlayers();
+    const seasonId = searchParams.season || await getDefaultSeason();
 
     return (
         <div className="min-h-screen">
@@ -21,7 +26,7 @@ export default async function PlayerComparePage() {
                     </p>
                 </div>
 
-                <PlayerComparison players={players} />
+                <PlayerComparison players={players} seasonId={seasonId} />
             </main>
         </div>
     );

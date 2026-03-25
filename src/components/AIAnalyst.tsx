@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { MessageSquare, X, Send, Bot, User, Sparkles, ChevronDown, Timer } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { getDefaultSeason } from "@/lib/data";
 
 interface Message {
     role: 'user' | 'assistant';
@@ -19,9 +21,25 @@ function renderMarkdown(text: string) {
 }
 
 export default function AIAnalyst() {
+    const searchParams = useSearchParams();
+    const [currentSeasonId, setCurrentSeasonId] = useState<string>("S23");
     const [isOpen, setIsOpen] = useState(false);
+    
+    useEffect(() => {
+        const loadDefault = async () => {
+            const seasonFromUrl = searchParams.get('season');
+            if (seasonFromUrl) {
+                setCurrentSeasonId(seasonFromUrl);
+            } else {
+                const def = await getDefaultSeason();
+                setCurrentSeasonId(def);
+            }
+        };
+        loadDefault();
+    }, [searchParams]);
+
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', content: "Hey! I'm the **FLV AI Analyst**. Ask me anything — standings, player stats, map records, or who's popping off this week." }
+        { role: 'assistant', content: `Hey! I'm the **FLV AI Analyst**. Ask me anything about ${currentSeasonId} — standings, player stats, map records, or who's popping off this week.` }
     ]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -61,7 +79,7 @@ export default function AIAnalyst() {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userMsg, history })
+                body: JSON.stringify({ message: userMsg, history, seasonId: currentSeasonId })
             });
 
             const data = await res.json();
@@ -108,7 +126,7 @@ export default function AIAnalyst() {
                                 <h3 className="font-display text-sm font-black text-white italic tracking-widest uppercase">AI ANALYST</h3>
                                 <div className="flex items-center gap-1.5">
                                     <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-ping" />
-                                    <span className="text-[10px] text-white/60 font-black uppercase tracking-widest">SEASON 23 LIVE</span>
+                                    <span className="text-[10px] text-white/60 font-black uppercase tracking-widest">{currentSeasonId} LIVE</span>
                                 </div>
                             </div>
                         </div>
@@ -178,7 +196,7 @@ export default function AIAnalyst() {
                             </button>
                         </div>
                         <div className="text-[9px] text-center text-foreground/20 font-black uppercase tracking-widest mt-2">
-                            {cooldown > 0 ? `⏳ Cooldown · ${cooldown}s` : 'AI Analyst · S23 Live Data'}
+                            {cooldown > 0 ? `⏳ Cooldown · ${cooldown}s` : `AI Analyst · ${currentSeasonId} Live Data`}
                         </div>
                     </div>
                 </div>

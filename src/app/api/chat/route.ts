@@ -14,7 +14,7 @@ import { chatWithAI } from '@/lib/ai/chat';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { message, history } = body;
+        const { message, history, seasonId } = body;
 
         if (!message || typeof message !== 'string' || message.trim().length === 0) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         console.log(`[AI Chat] Provider: ${process.env.AI_PROVIDER || 'gemini'} | History: ${validHistory.length} msgs`);
 
         // Call the AI Agent (no snapshot needed — it queries the DB directly)
-        const result = await chatWithAI(message.trim(), null, validHistory);
+        const result = await chatWithAI(message.trim(), null, validHistory, seasonId);
 
         if (result.error) {
             if (result.reply) {

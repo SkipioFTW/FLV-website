@@ -13,9 +13,10 @@ const COLORS = ['#FF4655', '#3FD1FF', '#FFB800', '#00FF94', '#8E44AD', '#E67E22'
 interface Props {
     teams: { id: number; name: string; tag: string }[];
     initialSelectedId?: number;
+    seasonId: string;
 }
 
-export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
+export default function TeamAnalytics({ teams, initialSelectedId, seasonId }: Props) {
     const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? teams[0]?.id ?? null);
     const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
     const [stats, setStats] = useState<TeamPerformance | null>(null);
@@ -25,12 +26,12 @@ export default function TeamAnalytics({ teams, initialSelectedId }: Props) {
         if (initialSelectedId) setSelectedId(initialSelectedId);
         if (selectedId) {
             setLoading(true);
-            getTeamPerformance(selectedId, matchType).then(data => {
+            getTeamPerformance(selectedId, matchType, seasonId).then(data => {
                 setStats(data);
                 setLoading(false);
             });
         }
-    }, [selectedId, initialSelectedId, matchType]);
+    }, [selectedId, initialSelectedId, matchType, seasonId]);
 
     return (
         <div className="space-y-8">

@@ -328,9 +328,9 @@ async def player_info(interaction: discord.Interaction, name: str):
             row = cursor.fetchone()
             if not row: return await interaction.followup.send(f"❌ Player `{name}` not found.")
             pid, pname, rid, prank, puuid, tname, ttag = row
-            cursor.execute("SELECT COUNT(*), AVG(acs), SUM(kills), SUM(deaths), SUM(assists) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed'", (pid,))
+            cursor.execute("SELECT COUNT(*), AVG(acs), SUM(kills), SUM(deaths), SUM(assists), AVG(adr), AVG(kast), AVG(hs_pct) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed'", (pid,))
             agg = cursor.fetchone()
-            maps, acs, k, d, a = agg[0] or 0, agg[1] or 0, agg[2] or 0, agg[3] or 0, agg[4] or 0
+            maps, acs, k, d, a, adr, kast, hs = agg[0] or 0, agg[1] or 0, agg[2] or 0, agg[3] or 0, agg[4] or 0, agg[5] or 0, agg[6] or 0, agg[7] or 0
             cursor.execute("SELECT agent, COUNT(*) as c, AVG(acs) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed' GROUP BY agent ORDER BY c DESC LIMIT 3", (pid,))
             agents = cursor.fetchall()
             cursor.execute("SELECT m.week, t1.tag, t2.tag, msm.acs, msm.kills, msm.deaths FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id JOIN teams t1 ON m.team1_id = t1.id JOIN teams t2 ON m.team2_id = t2.id WHERE msm.player_id = %s AND m.status = 'completed' ORDER BY m.id DESC LIMIT 3", (pid,))
@@ -343,7 +343,7 @@ async def player_info(interaction: discord.Interaction, name: str):
             embed.add_field(name="Riot ID", value=f"`{rid or 'N/A'}`", inline=True)
             embed.add_field(name="Rank", value=f"`{prank or 'Unranked'}`", inline=True)
             embed.add_field(name="Maps", value=f"`{maps}`", inline=True)
-            embed.add_field(name="📊 Stats", value=f"ACS: `{round(acs, 1)}` | K/D: `{round(k/(d if d>0 else 1), 2)}` | AST: `{a}`", inline=False)
+            embed.add_field(name="📊 Stats", value=f"ACS: `{round(acs, 1)}` | K/D: `{round(k/(d if d>0 else 1), 2)}` | AST: `{a}` \nADR: `{round(adr, 1)}` | KAST: `{round(kast, 1)}%` | HS: `{round(hs, 1)}%`", inline=False)
             if agents:
                 embed.add_field(name="🎭 Top Agents", value="\n".join([f"• {an}: {c} maps ({round(aa)} ACS)" for an, c, aa in agents]), inline=True)
             if history:

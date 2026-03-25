@@ -1,12 +1,17 @@
 import Navbar from '@/components/Navbar';
 import TeamAnalytics from '@/components/TeamAnalytics';
-import { getTeams } from '@/lib/data';
+import { getTeams, getDefaultSeason } from '@/lib/data';
 
 export const revalidate = 900; // Revalidate every 15 minutes
 
-export default async function TeamsPage({ searchParams }: { searchParams: { team_id?: string } }) {
+export default async function TeamsPage({ 
+    searchParams 
+}: { 
+    searchParams: { team_id?: string; season?: string } 
+}) {
     const teams = await getTeams();
     const initialId = searchParams?.team_id ? Number(searchParams.team_id) : undefined;
+    const seasonId = searchParams?.season || await getDefaultSeason();
 
     return (
         <div className="min-h-screen">
@@ -32,7 +37,7 @@ export default async function TeamsPage({ searchParams }: { searchParams: { team
                 </div>
 
                 {teams.length > 0 ? (
-                    <TeamAnalytics teams={teams} initialSelectedId={initialId} />
+                    <TeamAnalytics teams={teams} initialSelectedId={initialId} seasonId={seasonId} />
                 ) : (
                     <div className="glass rounded-xl p-12 border border-white/5 text-center">
                         <div className="w-16 h-16 mx-auto mb-4 bg-white/5 rounded-full flex items-center justify-center">

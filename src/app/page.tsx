@@ -1,9 +1,14 @@
 import Navbar from "@/components/Navbar";
 import Link from 'next/link';
-import { getGlobalStats } from '@/lib/data';
+import { getGlobalStats, getDefaultSeason } from '@/lib/data';
 
-export default async function Home() {
-  const stats = await getGlobalStats();
+export default async function Home({
+    searchParams,
+}: {
+    searchParams: { season?: string };
+}) {
+    const seasonId = searchParams.season || await getDefaultSeason();
+    const stats = await getGlobalStats(seasonId);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -17,7 +22,7 @@ export default async function Home() {
               Tournament Portal
             </span>
             <span className="block drop-shadow-[0_0_30px_rgba(255,70,85,0.3)]">
-              Season 23
+              Season {seasonId.replace('S', '')}
             </span>
             <span className="block text-val-blue drop-shadow-[0_0_30px_rgba(63,209,255,0.3)]">
               Leaderboards

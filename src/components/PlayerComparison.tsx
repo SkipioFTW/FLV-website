@@ -12,7 +12,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-export default function PlayerComparison({ players }: { players: { id: number, name: string, riot_id: string }[] }) {
+export default function PlayerComparison({ players, seasonId }: { players: { id: number, name: string, riot_id: string }[], seasonId: string }) {
     const [id1, setId1] = useState<number | null>(null);
     const [id2, setId2] = useState<number | null>(null);
     const [stats1, setStats1] = useState<PlayerStats | null>(null);
@@ -24,15 +24,15 @@ export default function PlayerComparison({ players }: { players: { id: number, n
         if (id1 || id2) {
             setLoading(true);
             Promise.all([
-                id1 ? getPlayerStats(id1, matchType) : Promise.resolve(null),
-                id2 ? getPlayerStats(id2, matchType) : Promise.resolve(null)
+                id1 ? getPlayerStats(id1, matchType, seasonId) : Promise.resolve(null),
+                id2 ? getPlayerStats(id2, matchType, seasonId) : Promise.resolve(null)
             ]).then(([p1, p2]) => {
                 if (id1) setStats1(p1);
                 if (id2) setStats2(p2);
                 setLoading(false);
             });
         }
-    }, [id1, id2, matchType]);
+    }, [id1, id2, matchType, seasonId]);
 
     const radarData = useMemo(() => {
         if (!stats1 || !stats2) return [];

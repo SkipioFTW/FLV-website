@@ -13,7 +13,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-export default function TeamComparison({ teams }: { teams: { id: number, name: string, tag: string }[] }) {
+export default function TeamComparison({ teams, seasonId }: { teams: { id: number, name: string, tag: string }[], seasonId: string }) {
     const [id1, setId1] = useState<number | null>(null);
     const [id2, setId2] = useState<number | null>(null);
     const [stats1, setStats1] = useState<TeamPerformance | null>(null);
@@ -25,15 +25,15 @@ export default function TeamComparison({ teams }: { teams: { id: number, name: s
         if (id1 || id2) {
             setLoading(true);
             Promise.all([
-                id1 ? getTeamPerformance(id1, matchType) : Promise.resolve(null),
-                id2 ? getTeamPerformance(id2, matchType) : Promise.resolve(null)
+                id1 ? getTeamPerformance(id1, matchType, seasonId) : Promise.resolve(null),
+                id2 ? getTeamPerformance(id2, matchType, seasonId) : Promise.resolve(null)
             ]).then(([t1, t2]) => {
                 if (id1) setStats1(t1);
                 if (id2) setStats2(t2);
                 setLoading(false);
             });
         }
-    }, [id1, id2, matchType]);
+    }, [id1, id2, matchType, seasonId]);
 
     const progressionData = useMemo(() => {
         if (!stats1 || !stats2) return [];

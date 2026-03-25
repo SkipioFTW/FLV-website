@@ -15,12 +15,13 @@ import { executeAIQuery } from './db';
 // ─── Database Schema Context ──────────────────────────────────────────────────
 // This is given to the AI so it knows what tables and columns exist.
 // DO NOT include sensitive columns here.
-const DB_SCHEMA = `
+const getDbSchema = (seasonId: string) => `
 DATABASE SCHEMA (Valorant FLV League):
 
+seasons (id, name, is_active)
 teams (id, name, tag, group_name)
 players (id, name, riot_id, default_team_id)
-matches (id, week, team1_id, team2_id, winner_id, status, match_type, score_t1, score_t2)
+matches (id, week, team1_id, team2_id, winner_id, status, match_type, score_t1, score_t2, season_id)
 match_maps (match_id, map_index, map_name, team1_rounds, team2_rounds, winner_id)
 match_stats_map (player_id, team_id, match_id, map_index, agent, acs, kills, deaths, assists, adr, kast, hs_pct, fk, fd, clutches)
 match_rounds (match_id, map_index, round_number, winning_team_id)
@@ -29,19 +30,22 @@ KEY NOTES:
 - 'standings' is NOT a table. To get standings, query 'matches' where status = 'completed'.
 - 'matches.score_t1' and 'score_t2' are the number of MAPS won by each team in that match.
 - To find the "Best Team", look at who has the most wins (winner_id) in the 'matches' table.
+- ALWAYS filter by 'season_id' in the 'matches' table to get correct data for the selected season.
+- Current active season context being viewed: ${seasonId}.
 - Excluded teams: 'FAT1', 'FAT2' (Always exclude from standings/stats).
-- Player stats (match_stats_map) are per-map. Always use AVG() and GROUP BY player_id.
-- Current Season: S23.
+- Player stats (match_stats_map) are per-map. Join with 'matches' to filter by 'season_id'.
 `;
 
 // ─── System Prompt ──────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are the Lead Analyst of the FLV Valorant League (S23).
+const getSystemPrompt = (seasonId: string) => `You are the Lead Analyst of the FLV Valorant League.
+You are currently analyzing data for ${seasonId}.
 
 STRICT OPERATING RULES:
 1. **No External Knowledge**: This is a PRIVATE league. NEVER use your internal training data about VCT or pro teams (Fnatic, LOUD, etc.). 
 2. **Mandatory SQL**: For any question about players, teams, or results, you MUST first output a SQL block to get the data. 
-3. **If Query Fails/Empty**: If you find nothing, say "No data found for [Entity] in S23." Never guess.
-4. **Logic**:
+3. **Season Filtering**: You MUST include \`season_id = '${seasonId}'\` in your WHERE clause when querying 'matches'.
+4. **If Query Fails/Empty**: If you find nothing, say "No data found for [Entity] in ${seasonId}." Never guess.
+5. **Logic**:
    - To find a player or team: Use \`ILIKE '%name%'\`.
    - To count wins/losses: Use the 'matches' table ONLY. 
    - A winner_id in 'matches' means that team won the WHOLE match (all maps).
@@ -62,7 +66,7 @@ RESPONSE STRUCTURE (Final Answer):
 **ANALYSIS**: 2-3 bullet points with exact numbers.
 **THE TAKE**: Short closing opinion.
 
-${DB_SCHEMA}`;
+${getDbSchema(seasonId)}`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -92,7 +96,8 @@ function extractSQL(text: string): string | null {
 export async function chatWithAI(
     userMessage: string,
     _snapshot: any,         // kept for backward-compat with route.ts, not used
-    conversationHistory: ChatMessage[] = []
+    conversationHistory: ChatMessage[] = [],
+    seasonId: string = 'S23'
 ): Promise<ChatResponse> {
     const apiKey = process.env.AI_API_KEY;
     const provider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
@@ -103,7 +108,7 @@ export async function chatWithAI(
 
     try {
         // Step 1: Ask the AI for its response (may include a SQL block)
-        const firstResponse = await callProvider(provider, apiKey, userMessage, conversationHistory, null);
+        const firstResponse = await callProvider(provider, apiKey, userMessage, conversationHistory, seasonId);
 
         // Step 2: Check if the AI generated a SQL query
         const sql = extractSQL(firstResponse);
@@ -113,7 +118,7 @@ export async function chatWithAI(
         }
 
         // Step 3: Execute the validated query
-        console.log(`AI SQL Query: ${sql.slice(0, 200)}...`);
+        console.log(`[AI Chat] Season: ${seasonId} | SQL Query: ${sql.slice(0, 150)}...`);
         const { data, error: queryError } = await executeAIQuery(sql);
 
         if (queryError) {
@@ -130,7 +135,7 @@ export async function chatWithAI(
             apiKey,
             followupMessage,
             [...conversationHistory, { role: 'user', content: userMessage }, { role: 'assistant', content: firstResponse }],
-            null
+            seasonId
         );
 
         return { reply: finalResponse };
@@ -156,10 +161,12 @@ async function callProvider(
     apiKey: string,
     userMessage: string,
     history: ChatMessage[],
-    _unused: null
+    seasonId: string
 ): Promise<string> {
+    const systemPrompt = getSystemPrompt(seasonId);
+
     if (provider === 'gemini') {
-        return callGemini(apiKey, userMessage, history);
+        return callGemini(apiKey, userMessage, history, 'gemini-2.0-flash', systemPrompt);
     }
 
     const providerUrls: Record<string, string> = {
@@ -176,7 +183,7 @@ async function callProvider(
     const baseUrl = providerUrls[provider] || (process.env.AI_BASE_URL || 'https://api.openai.com/v1/chat/completions');
     const model = process.env.AI_MODEL || providerModels[provider] || 'gpt-4o-mini';
 
-    return callOpenAICompatible(baseUrl, apiKey, model, userMessage, history);
+    return callOpenAICompatible(baseUrl, apiKey, model, userMessage, history, systemPrompt);
 }
 
 // ─── Gemini ───────────────────────────────────────────────────────────────────
@@ -184,7 +191,8 @@ async function callGemini(
     apiKey: string,
     userMessage: string,
     history: ChatMessage[],
-    model: string = 'gemini-2.0-flash'
+    model: string = 'gemini-2.0-flash',
+    systemPrompt: string
 ): Promise<string> {
     const useModel = process.env.AI_MODEL || model;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${useModel}:generateContent?key=${apiKey}`;
@@ -199,7 +207,7 @@ async function callGemini(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            systemInstruction: { parts: [{ text: systemPrompt }] },
             contents,
             generationConfig: { maxOutputTokens: 1024, temperature: 0.5 },
         }),
@@ -216,9 +224,10 @@ async function callOpenAICompatible(
     apiKey: string,
     model: string,
     userMessage: string,
-    history: ChatMessage[]
+    history: ChatMessage[],
+    systemPrompt: string
 ): Promise<string> {
-    const messages: any[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+    const messages: any[] = [{ role: 'system', content: systemPrompt }];
     history.forEach(msg => messages.push({ role: msg.role, content: msg.content }));
     messages.push({ role: 'user', content: userMessage });
 

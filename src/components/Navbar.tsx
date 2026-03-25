@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSearchParams } from "next/navigation";
+import { getSeasons, getDefaultSeason } from "@/lib/data";
+import SeasonSelector from "./SeasonSelector";
 
 const navItems = [
     { name: "Overview", href: "/" },
@@ -20,6 +23,25 @@ const navItems = [
 
 export default function Navbar() {
     const [hoveredPath, setHoveredPath] = useState("/");
+    const [seasons, setSeasons] = useState<{ id: string, name: string }[]>([]);
+    const [currentSeasonId, setCurrentSeasonId] = useState<string>("");
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        const loadSeasons = async () => {
+            const data = await getSeasons();
+            setSeasons(data);
+            
+            const seasonFromUrl = searchParams.get('season');
+            if (seasonFromUrl) {
+                setCurrentSeasonId(seasonFromUrl);
+            } else {
+                const def = await getDefaultSeason();
+                setCurrentSeasonId(def);
+            }
+        };
+        loadSeasons();
+    }, [searchParams]);
 
     return (
         <nav className="fixed top-0 left-0 w-full z-50 px-6 py-4">
@@ -30,9 +52,15 @@ export default function Navbar() {
                         <div className="w-5 h-5 bg-white -rotate-45" />
                     </div>
                     <span className="font-display text-xl font-bold tracking-tighter uppercase leading-none">
-                        S23 <span className="text-val-red">Portal</span>
+                        {currentSeasonId} <span className="text-val-red">Portal</span>
                     </span>
                 </Link>
+
+                <div className="flex items-center gap-4">
+                    {seasons.length > 0 && (
+                        <SeasonSelector seasons={seasons} currentSeasonId={currentSeasonId} />
+                    )}
+                </div>
 
                 {/* Desktop Nav */}
                 <div className="hidden md:flex items-center gap-1">

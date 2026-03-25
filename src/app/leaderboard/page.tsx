@@ -1,4 +1,4 @@
-import { getLeaderboard } from '@/lib/data';
+import { getLeaderboard, getDefaultSeason } from '@/lib/data';
 import Navbar from '@/components/Navbar';
 import LeaderboardFilters from '@/components/LeaderboardFilters';
 import Link from 'next/link';
@@ -8,10 +8,11 @@ export const revalidate = 900; // Revalidate every 15 minutes
 export default async function LeaderboardPage({
     searchParams,
 }: {
-    searchParams: { type?: string };
+    searchParams: { type?: string; season?: string };
 }) {
+    const seasonId = searchParams.season || await getDefaultSeason();
     const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
-    const leaderboard = await getLeaderboard(0, matchType);
+    const leaderboard = await getLeaderboard(0, matchType, seasonId);
 
     return (
         <div className="min-h-screen">
@@ -21,7 +22,7 @@ export default async function LeaderboardPage({
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                     <div>
                         <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3">
-                            Player <span className="text-val-blue">Leaderboard</span>
+                            Season {seasonId.replace('S', '')} <span className="text-val-blue">Leaderboard</span>
                         </h1>
                         <p className="text-foreground/60 text-lg">
                             Top performers ranked by Average Combat Score

@@ -1,5 +1,43 @@
 import { supabase, type Team, type Match, type MatchMap } from './supabase';
 
+/**
+ * Get the current active season ID (e.g., 'S24')
+ */
+export async function getDefaultSeason(): Promise<string> {
+    try {
+        const { data, error } = await supabase
+            .from('seasons')
+            .select('id')
+            .eq('is_active', true)
+            .order('id', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !data) return 'S24';
+        return data.id;
+    } catch {
+        return 'S24';
+    }
+}
+
+/**
+ * Get all available seasons
+ */
+export async function getSeasons(): Promise<{ id: string, name: string, is_active: boolean }[]> {
+    try {
+        const { data, error } = await supabase
+            .from('seasons')
+            .select('*')
+            .order('id', { ascending: false });
+        
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.error('Error fetching seasons:', error);
+        return [{ id: 'S24', name: 'Season 24', is_active: true }, { id: 'S23', name: 'Season 23', is_active: false }];
+    }
+}
+
 export type StandingsRow = {
     id: number;
     name: string;
@@ -386,8 +424,10 @@ export type TeamPerformance = {
  * Points system: Winner gets 15, Loser gets min(rounds_scored, 12)
  * Returns grouped standings by group_name
  */
-export async function getStandings(): Promise<Map<string, StandingsRow[]>> {
+export async function getStandings(seasonId?: string): Promise<Map<string, StandingsRow[]>> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
+        
         // Fetch teams
         const { data: teams, error: teamsError } = await supabase
             .from('teams')
@@ -407,9 +447,10 @@ export async function getStandings(): Promise<Map<string, StandingsRow[]>> {
         // Fetch completed regular matches
         const { data: matches, error: matchesError } = await supabase
             .from('matches')
-            .select('id, team1_id, team2_id, winner_id, status, match_type, format, maps_played, is_forfeit, score_t1, score_t2')
+            .select('id, team1_id, team2_id, winner_id, status, match_type, format, maps_played, is_forfeit, score_t1, score_t2, season_id')
             .eq('status', 'completed')
-            .neq('match_type', 'playoff');
+            .neq('match_type', 'playoff')
+            .eq('season_id', activeSeason);
 
         if (matchesError) throw matchesError;
 
@@ -537,8 +578,9 @@ export async function getStandings(): Promise<Map<string, StandingsRow[]>> {
  * Fetch player leaderboard stats
  * Replicates production SQL logic: includes unique matches where status is 'completed'
  */
-export async function getLeaderboard(minGames: number = 0, matchType?: 'regular' | 'playoff'): Promise<LeaderboardPlayer[]> {
+export async function getLeaderboard(minGames: number = 0, matchType?: 'regular' | 'playoff', seasonId?: string): Promise<LeaderboardPlayer[]> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         // 1. Fetch all players and teams for lookup
         const [playersRes, teamsRes] = await Promise.all([
             supabase.from('players').select('id, name, riot_id, default_team_id, rank'),
@@ -562,7 +604,8 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
             let query = supabase
                 .from('matches')
                 .select('id')
-                .eq('status', 'completed');
+                .eq('status', 'completed')
+                .eq('season_id', activeSeason);
 
             if (matchType) {
                 query = query.eq('match_type', matchType);
@@ -686,12 +729,13 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
 /**
  * Fetch detailed analytics for all agents and maps (Meta Analytics)
  */
-export async function getMetaAnalytics(): Promise<MetaAnalytics> {
+export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         const [statsRes, mapsRes, matchesRes] = await Promise.all([
             supabase.from('match_stats_map').select('agent, acs, kills, deaths, match_id, map_index, team_id'),
             supabase.from('match_maps').select('match_id, map_index, map_name, team1_rounds, team2_rounds, winner_id'),
-            supabase.from('matches').select('id, status, winner_id, team1_id, team2_id').eq('status', 'completed')
+            supabase.from('matches').select('id, status, winner_id, team1_id, team2_id').eq('status', 'completed').eq('season_id', activeSeason)
         ]);
 
         if (statsRes.error) throw statsRes.error;
@@ -803,8 +847,9 @@ export async function getMetaAnalytics(): Promise<MetaAnalytics> {
 /**
  * Fetch detailed stats for a specific player
  */
-export async function getPlayerStats(playerId: number, matchType?: 'regular' | 'playoff'): Promise<PlayerStats | null> {
+export async function getPlayerStats(playerId: number, matchType?: 'regular' | 'playoff', seasonId?: string): Promise<PlayerStats | null> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         // 1. Fetch player info
         const { data: player, error: playerError } = await supabase
             .from('players')
@@ -826,7 +871,7 @@ export async function getPlayerStats(playerId: number, matchType?: 'regular' | '
         }
 
         // 3. First fetch matches based on matchType filter
-        let matchQuery = supabase.from('matches').select('id');
+        let matchQuery = supabase.from('matches').select('id').eq('season_id', activeSeason);
         if (matchType) {
             matchQuery = matchQuery.eq('match_type', matchType);
         }
@@ -1106,8 +1151,9 @@ export async function getPlayers(): Promise<{ id: number; name: string; riot_id:
 /**
  * Fetch detailed performance stats for a specific team
  */
-export async function getTeamPerformance(teamId: number, matchType?: 'regular' | 'playoff'): Promise<TeamPerformance | null> {
+export async function getTeamPerformance(teamId: number, matchType?: 'regular' | 'playoff', seasonId?: string): Promise<TeamPerformance | null> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         // 1. Fetch team info
         const { data: team, error: teamError } = await supabase
             .from('teams')
@@ -1121,6 +1167,7 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
         let matchQuery = supabase
             .from('matches')
             .select('*')
+            .eq('season_id', activeSeason)
             .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`);
 
         if (matchType) {
@@ -1372,10 +1419,11 @@ export type SubstitutionAnalytics = {
 /**
  * Fetch substitution analytics
  */
-export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'): Promise<SubstitutionAnalytics> {
+export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff', seasonId?: string): Promise<SubstitutionAnalytics> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         // 1. Fetch data
-        let matchQuery = supabase.from('matches').select('*').eq('status', 'completed');
+        let matchQuery = supabase.from('matches').select('*').eq('status', 'completed').eq('season_id', activeSeason);
         if (matchType) {
             matchQuery = matchQuery.eq('match_type', matchType);
         }
@@ -1501,17 +1549,18 @@ export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'
 /**
  * Fetch global tournament statistics for the homepage
  */
-export async function getGlobalStats(): Promise<GlobalStats> {
+export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         // 1. Fetch counts in parallel
         const [teamsRes, matchesRes, playersRes] = await Promise.all([
             supabase.from('teams').select('*', { count: 'exact', head: true }),
-            supabase.from('matches').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
+            supabase.from('matches').select('*', { count: 'exact', head: true }).eq('status', 'completed').eq('season_id', activeSeason),
             supabase.from('players').select('*', { count: 'exact', head: true })
         ]);
 
         // 2. Fetch standings to calculate total points
-        const standings = await getStandings();
+        const standings = await getStandings(activeSeason);
         let totalPoints = 0;
         standings.forEach(group => {
             group.forEach(team => {
@@ -1539,8 +1588,9 @@ export async function getGlobalStats(): Promise<GlobalStats> {
 /**
  * Fetch all matches for the match ledger
  */
-export async function getAllMatches(): Promise<MatchEntry[]> {
+export async function getAllMatches(seasonId?: string): Promise<MatchEntry[]> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         const { data: matches, error } = await supabase
             .from('matches')
             .select(`
@@ -1557,9 +1607,11 @@ export async function getAllMatches(): Promise<MatchEntry[]> {
                 playoff_round,
                 bracket_pos,
                 bracket_label,
+                season_id,
                 team1:teams!team1_id(id, name, tag, logo_path),
                 team2:teams!team2_id(id, name, tag, logo_path)
             `)
+            .eq('season_id', activeSeason)
             .order('week', { ascending: false })
             .order('playoff_round', { ascending: false })
             .order('id', { ascending: false });

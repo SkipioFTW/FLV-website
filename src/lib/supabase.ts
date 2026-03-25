@@ -39,6 +39,7 @@ export type Match = {
     maps_played: number;
     match_type?: string;
     is_forfeit?: boolean;
+    season_id: string;
 };
 
 export type MatchMap = {
