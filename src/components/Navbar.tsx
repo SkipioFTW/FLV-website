@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSearchParams } from "next/navigation";
@@ -21,7 +21,7 @@ const navItems = [
     { name: "Admin", href: "/admin", isAdmin: true },
 ];
 
-export default function Navbar() {
+function NavbarContent() {
     const [hoveredPath, setHoveredPath] = useState("/");
     const [seasons, setSeasons] = useState<{ id: string, name: string }[]>([]);
     const [currentSeasonId, setCurrentSeasonId] = useState<string>("");
@@ -95,5 +95,13 @@ export default function Navbar() {
                 </div>
             </div>
         </nav>
+    );
+}
+
+export default function Navbar() {
+    return (
+        <Suspense fallback={null}>
+            <NavbarContent />
+        </Suspense>
     );
 }

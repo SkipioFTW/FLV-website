@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { MessageSquare, X, Send, Bot, User, Sparkles, ChevronDown, Timer } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { getDefaultSeason } from "@/lib/data";
@@ -20,7 +20,7 @@ function renderMarkdown(text: string) {
         .replace(/\n/g, '<br/>');
 }
 
-export default function AIAnalyst() {
+function AIAnalystContent() {
     const searchParams = useSearchParams();
     const [currentSeasonId, setCurrentSeasonId] = useState<string>("S23");
     const [isOpen, setIsOpen] = useState(false);
@@ -202,5 +202,13 @@ export default function AIAnalyst() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function AIAnalyst() {
+    return (
+        <Suspense fallback={null}>
+            <AIAnalystContent />
+        </Suspense>
     );
 }
