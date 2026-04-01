@@ -17,8 +17,8 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
-  title: "S23 Portal | Valorant Tournament Hub",
-  description: "Advanced tournament management and statistics portal for S23.",
+  title: "S24 Portal | Valorant Tournament Hub",
+  description: "Advanced tournament management and statistics portal for Season 24.",
 };
 
 export default function RootLayout({

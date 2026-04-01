@@ -8,7 +8,6 @@ export async function getDefaultSeason(): Promise<string> {
         const { data, error } = await supabase
             .from('seasons')
             .select('id')
-            .eq('is_active', true)
             .order('id', { ascending: false })
             .limit(1)
             .single();
