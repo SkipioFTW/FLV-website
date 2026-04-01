@@ -445,9 +445,9 @@ export async function getStandings(seasonId?: string): Promise<Map<string, Stand
             const teamIds = (history || []).map(h => h.team_id);
             if (teamIds.length > 0) {
                 teamsQuery = teamsQuery.in('id', teamIds);
-            } else {
-                return new Map();
             }
+            // If history is empty, we don't filter (fallback to showing all teams)
+            // This handles cases where history isn't fully populated yet.
         }
 
         const { data: teams, error: teamsError } = await teamsQuery;
@@ -471,7 +471,8 @@ export async function getStandings(seasonId?: string): Promise<Map<string, Stand
             .neq('match_type', 'playoff');
 
         if (!isAllTime) {
-            matchesQuery = matchesQuery.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchesQuery = matchesQuery.or(seasonFilter);
         }
 
         const { data: matches, error: matchesError } = await matchesQuery;
@@ -619,8 +620,6 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
             const pIds = (history || []).map(h => h.player_id);
             if (pIds.length > 0) {
                 playersQuery = playersQuery.in('id', pIds);
-            } else {
-                return [];
             }
         }
 
@@ -649,7 +648,8 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                 .eq('status', 'completed');
 
             if (!isAllTime) {
-                query = query.eq('season_id', activeSeason);
+                const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+                query = query.or(seasonFilter);
             }
 
             if (matchType) {
@@ -781,7 +781,8 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
 
         let matchesQuery = supabase.from('matches').select('id, status, winner_id, team1_id, team2_id').eq('status', 'completed');
         if (!isAllTime) {
-            matchesQuery = matchesQuery.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchesQuery = matchesQuery.or(seasonFilter);
         }
 
         const [statsRes, mapsRes, matchesRes] = await Promise.all([
@@ -943,7 +944,8 @@ export async function getPlayerStats(playerId: number, matchType?: 'regular' | '
         // 3. First fetch matches based on matchType filter
         let matchQuery = supabase.from('matches').select('id');
         if (!isAllTime) {
-            matchQuery = matchQuery.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchQuery = matchQuery.or(seasonFilter);
         }
         if (matchType) {
             matchQuery = matchQuery.eq('match_type', matchType);
@@ -1210,8 +1212,6 @@ export async function getTeams(seasonId?: string): Promise<{ id: number; name: s
             const teamIds = (history || []).map(h => h.team_id);
             if (teamIds.length > 0) {
                 query = query.in('id', teamIds);
-            } else {
-                return [];
             }
         }
 
@@ -1243,8 +1243,6 @@ export async function getPlayers(seasonId?: string): Promise<{ id: number; name:
             const pIds = (history || []).map(h => h.player_id);
             if (pIds.length > 0) {
                 query = query.in('id', pIds);
-            } else {
-                return [];
             }
         }
 
@@ -1295,7 +1293,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`);
 
         if (!isAllTime) {
-            matchQuery = matchQuery.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchQuery = matchQuery.or(seasonFilter);
         }
 
         if (matchType) {
@@ -1555,7 +1554,8 @@ export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'
         // 1. Fetch data
         let matchQuery = supabase.from('matches').select('*').eq('status', 'completed');
         if (!isAllTime) {
-            matchQuery = matchQuery.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchQuery = matchQuery.or(seasonFilter);
         }
         if (matchType) {
             matchQuery = matchQuery.eq('match_type', matchType);
@@ -1689,7 +1689,8 @@ export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
 
         let matchesQuery = supabase.from('matches').select('*', { count: 'exact', head: true }).eq('status', 'completed');
         if (!isAllTime) {
-            matchesQuery = matchesQuery.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchesQuery = matchesQuery.or(seasonFilter);
         }
 
         // 1. Fetch counts in parallel
@@ -1755,7 +1756,8 @@ export async function getAllMatches(seasonId?: string): Promise<MatchEntry[]> {
             `);
 
         if (!isAllTime) {
-            query = query.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            query = query.or(seasonFilter);
         }
 
         const { data: matches, error } = await query
@@ -1845,7 +1847,8 @@ export async function getPlayoffMatches(seasonId?: string): Promise<PlayoffMatch
             .eq('match_type', 'playoff');
 
         if (!isAllTime) {
-            query = query.eq('season_id', activeSeason);
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            query = query.or(seasonFilter);
         }
 
         const { data: matches, error } = await query
@@ -2726,9 +2729,10 @@ export async function getTeamComparison(id1: number, id2: number) {
 
 export async function getSimulationData(seasonId?: string) {
     const activeSeason = seasonId || await getDefaultSeason();
+    const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
     const [standingsMap, matchesRes] = await Promise.all([
         getStandings(activeSeason),
-        supabase.from('matches').select('id, team1_id, team2_id, status, week, group_name').eq('status', 'scheduled').neq('match_type', 'playoff').eq('season_id', activeSeason)
+        supabase.from('matches').select('id, team1_id, team2_id, status, week, group_name').eq('status', 'scheduled').neq('match_type', 'playoff').or(seasonFilter)
     ]);
 
     // Flatten standings

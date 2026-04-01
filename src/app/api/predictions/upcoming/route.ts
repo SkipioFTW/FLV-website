@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
       .neq('status', 'completed');
 
     if (seasonId) {
-      query = query.eq('season_id', seasonId);
+      const seasonFilter = seasonId === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${seasonId}`;
+      query = query.or(seasonFilter);
     }
 
     const { data: matches } = await query.order('week', { ascending: true });

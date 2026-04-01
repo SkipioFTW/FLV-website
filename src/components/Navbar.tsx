@@ -79,7 +79,7 @@ function NavbarContent() {
                 </Link>
 
                 {/* Desktop Nav - Main Items */}
-                <div className="hidden md:flex items-center gap-0.5 overflow-hidden">
+                <div className="hidden md:flex items-center gap-0.5">
                     {mainNavItems.map((item) => (
                         <Link
                             key={item.name}
