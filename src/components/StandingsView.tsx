@@ -27,7 +27,11 @@ export default function StandingsView({ groupedStandings }: Props) {
     const groups = Array.from(groupedStandings.entries());
     const [selectedGroup, setSelectedGroup] = useState<string>(groups[0]?.[0] || '');
 
-    if (groups.length === 0) {
+    const totalMatchesPlayed = groups.reduce((acc, [_, teams]) => {
+        return acc + teams.reduce((tAcc, team) => tAcc + team.Played, 0);
+    }, 0);
+
+    if (totalMatchesPlayed === 0) {
         return (
             <div className="glass rounded-xl p-20 text-center border border-white/5 shadow-2xl">
                 <div className="w-20 h-20 bg-val-red/10 rounded-full flex items-center justify-center mx-auto mb-6">

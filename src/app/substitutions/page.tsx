@@ -1,17 +1,18 @@
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import SubstitutionView from '@/components/SubstitutionView';
-import { getSubstitutionAnalytics } from '@/lib/data';
+import { getSubstitutionAnalytics, getDefaultSeason } from '@/lib/data';
 
 export const revalidate = 900; // Revalidate every 15 minutes
 
 export default async function SubstitutionsPage({
     searchParams,
 }: {
-    searchParams: { type?: string };
+    searchParams: { type?: string, season?: string };
 }) {
+    const seasonId = searchParams.season || await getDefaultSeason();
     const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
-    const analytics = await getSubstitutionAnalytics(matchType);
+    const analytics = await getSubstitutionAnalytics(matchType, seasonId);
 
     return (
         <div className="min-h-screen">
@@ -43,7 +44,7 @@ export default async function SubstitutionsPage({
                             Regular
                         </Link>
                         <Link
-                            href="/substitutions?type=playoff"
+                            href={`/substitutions?type=playoff&season=${seasonId}`}
                             className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'playoff' ? 'bg-val-yellow text-black shadow-lg shadow-val-yellow/20' : 'text-foreground/40 hover:text-foreground'}`}
                         >
                             Playoffs
@@ -51,17 +52,17 @@ export default async function SubstitutionsPage({
                     </div>
                 </div>
 
-                {analytics.teamStats.length > 0 ? (
+                {analytics.teamStats.length > 0 && analytics.logs.length > 0 ? (
                     <SubstitutionView data={analytics} />
                 ) : (
                     <div className="glass rounded-xl p-12 border border-white/5 text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-white/5 rounded-full flex items-center justify-center">
-                            <svg className="w-8 h-8 text-foreground/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-val-yellow/10 rounded-full flex items-center justify-center">
+                            <svg className="w-8 h-8 text-val-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </div>
-                        <h3 className="text-xl font-bold mb-2">No Substitution Data</h3>
-                        <p className="text-foreground/60">We couldn't find any substitution records in the database.</p>
+                        <h3 className="text-xl font-bold mb-2">No Substitution Data for Season {seasonId.replace('S', '')}</h3>
+                        <p className="text-foreground/60">We couldn't find any substitution records in the database for this season.</p>
                     </div>
                 )}
             </main>
