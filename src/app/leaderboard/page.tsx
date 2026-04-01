@@ -14,6 +14,14 @@ export default async function LeaderboardPage({
     const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
     const leaderboard = await getLeaderboard(0, matchType, seasonId);
 
+    const getLink = (type?: string) => {
+        const params = new URLSearchParams();
+        if (type) params.set('type', type);
+        if (searchParams.season) params.set('season', searchParams.season);
+        const query = params.toString();
+        return query ? `/leaderboard?${query}` : '/leaderboard';
+    };
+
     return (
         <div className="min-h-screen">
             <Navbar />
@@ -22,7 +30,7 @@ export default async function LeaderboardPage({
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                     <div>
                         <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3">
-                            Season {seasonId.replace('S', '')} <span className="text-val-blue">Leaderboard</span>
+                            {seasonId === 'all' ? 'Career' : `Season ${seasonId.replace('S', '')}`} <span className="text-val-blue">Leaderboard</span>
                         </h1>
                         <p className="text-foreground/60 text-lg">
                             Top performers ranked by Average Combat Score
@@ -32,19 +40,19 @@ export default async function LeaderboardPage({
                     {/* Match Type Toggle */}
                     <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
                         <Link
-                            href="/leaderboard"
+                            href={getLink()}
                             className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${!matchType ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
                         >
                             All
                         </Link>
                         <Link
-                            href="/leaderboard?type=regular"
+                            href={getLink('regular')}
                             className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'regular' ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
                         >
                             Regular
                         </Link>
                         <Link
-                            href="/leaderboard?type=playoff"
+                            href={getLink('playoff')}
                             className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${matchType === 'playoff' ? 'bg-val-blue text-white shadow-lg shadow-val-blue/20' : 'text-foreground/40 hover:text-foreground'}`}
                         >
                             Playoffs

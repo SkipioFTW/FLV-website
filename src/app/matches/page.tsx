@@ -17,7 +17,7 @@ export default async function MatchesPage({
             <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-32">
                 <header className="mb-12">
                     <h1 className="font-display text-4xl md:text-6xl font-black italic text-val-red uppercase tracking-tighter mb-4">
-                        Season {seasonId.replace('S', '')} <span className="text-white">Match Ledger</span>
+                        {seasonId === 'all' ? 'All Time' : `Season ${seasonId.replace('S', '')}`} <span className="text-white">Match Ledger</span>
                     </h1>
                     <p className="text-foreground/60 max-w-2xl font-medium">
                         Complete record of all tournament matches, including scheduled, live, and completed results.

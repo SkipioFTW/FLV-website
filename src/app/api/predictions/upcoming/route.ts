@@ -6,13 +6,23 @@ import { logisticPredict } from '@/lib/model/infer';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+import { NextRequest } from 'next/server';
+
+export async function GET(req: NextRequest) {
   try {
-    const { data: matches } = await supabaseServer
+    const { searchParams } = new URL(req.url);
+    const seasonId = searchParams.get('season');
+
+    let query = supabaseServer
       .from('matches')
       .select('id, week, group_name, team1_id, team2_id, status')
-      .neq('status', 'completed')
-      .order('week', { ascending: true });
+      .neq('status', 'completed');
+
+    if (seasonId) {
+      query = query.eq('season_id', seasonId);
+    }
+
+    const { data: matches } = await query.order('week', { ascending: true });
 
     if (!matches || matches.length === 0) {
       return NextResponse.json({ items: [] });

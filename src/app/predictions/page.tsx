@@ -4,8 +4,11 @@ import { useState, useEffect, useMemo } from 'react';
 import ScenarioGenerator from '@/components/ScenarioGenerator';
 import PlayoffProbability from '@/components/PlayoffProbability';
 import { getSimulationData, getPlayoffProbability, getTournamentWinProbability } from '@/lib/data';
+import { useSearchParams } from "next/navigation";
 
 export default function PredictionsPage() {
+  const searchParams = useSearchParams();
+  const seasonId = searchParams.get('season') || undefined;
   const [team1, setTeam1] = useState(0);
   const [team2, setTeam2] = useState(0);
   const [teams, setTeams] = useState<Array<{ id: number; name: string }>>([]);
@@ -25,7 +28,8 @@ export default function PredictionsPage() {
     const loadUpcoming = async () => {
       setBusyUpcoming(true);
       try {
-        const r = await fetch('/api/predictions/upcoming', { cache: 'no-store' });
+        const url = seasonId ? `/api/predictions/upcoming?season=${seasonId}` : '/api/predictions/upcoming';
+        const r = await fetch(url, { cache: 'no-store' });
         const j = await r.json();
         setUpcoming(j.items || []);
       } finally {
@@ -33,10 +37,10 @@ export default function PredictionsPage() {
       }
     };
     loadUpcoming();
-    getSimulationData().then(setSimulationData);
-    getPlayoffProbability().then(setPlayoffProbs);
-    getTournamentWinProbability().then(setTournamentProbs);
-  }, []);
+    getSimulationData(seasonId).then(setSimulationData);
+    getPlayoffProbability(1000, seasonId).then(setPlayoffProbs);
+    getTournamentWinProbability(1000, seasonId).then(setTournamentProbs);
+  }, [seasonId]);
 
   const predict = async () => {
     if (!team1 || !team2 || team1 === team2) return;
@@ -182,8 +186,12 @@ export default function PredictionsPage() {
               <PlayoffProbability probabilities={playoffProbs} />
             ) : (
               <div className="glass p-8 border border-white/5 rounded-xl text-center">
-                <div className="text-val-blue font-display text-2xl font-black uppercase italic mb-2">Regular Season Concluded</div>
-                <p className="text-foreground/40 text-sm">Standings are final. Qualification for Playoffs has been determined.</p>
+                <div className="text-val-blue font-display text-2xl font-black uppercase italic mb-2">
+                  {seasonId === 'all' ? 'Career Data' : 'Regular Season Concluded'}
+                </div>
+                <p className="text-foreground/40 text-sm">
+                  {seasonId === 'all' ? 'Simulations are not available for All Time view.' : 'Standings are final. Qualification for Playoffs has been determined.'}
+                </p>
               </div>
             )}
 

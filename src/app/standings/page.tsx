@@ -20,7 +20,7 @@ export default async function StandingsPage({
             <main className="max-w-7xl mx-auto px-6 pt-32 pb-20">
                 <div className="mb-12">
                     <h1 className="font-display text-4xl md:text-6xl font-black uppercase tracking-tighter mb-3">
-                        <span className="text-val-red">Season {seasonId.replace('S', '')}</span> Standings
+                        <span className="text-val-red">{seasonId === 'all' ? 'All Time' : `Season ${seasonId.replace('S', '')}`}</span> Standings
                     </h1>
                     <p className="text-foreground/60 text-lg">
                         Current tournament rankings and league-wide meta analytics

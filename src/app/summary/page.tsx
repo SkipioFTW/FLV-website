@@ -6,7 +6,12 @@ import { getAllMatches, getMatchDetails } from "@/lib/data";
 import EconomyChart from "@/components/EconomyChart";
 import MatchSearch from "@/components/MatchSearch";
 
+import { useSearchParams } from "next/navigation";
+
 export default function SummaryPage() {
+  const searchParams = useSearchParams();
+  const seasonId = searchParams.get('season') || undefined;
+
   const [matches, setMatches] = useState<any[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<number>(1);
   const [matchId, setMatchId] = useState<number>(0);
@@ -14,13 +19,22 @@ export default function SummaryPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    getAllMatches().then(ms => {
+    getAllMatches(seasonId).then(ms => {
       setMatches(ms);
       if (ms.length > 0) {
-        setSelectedWeek(ms[0].week);
+        // Try to keep the same week if it exists in the new season
+        const currentWeeks = Array.from(new Set(ms.map(m => m.week)));
+        if (!currentWeeks.includes(selectedWeek)) {
+          setSelectedWeek(ms[0].week);
+        }
+        setMatchId(0);
+        setDetails(null);
+      } else {
+        setMatchId(0);
+        setDetails(null);
       }
     });
-  }, []);
+  }, [seasonId]);
 
   const loadDetails = async () => {
     if (!matchId) return;
@@ -36,7 +50,7 @@ export default function SummaryPage() {
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-32">
         <header className="mb-8">
           <h1 className="font-display text-4xl md:text-5xl font-black italic text-val-blue uppercase tracking-tighter">
-            Match Summary
+            {seasonId === 'all' ? 'All Time' : `Season ${seasonId?.replace('S', '') || ''}`} Match Summary
           </h1>
           <p className="text-foreground/40 font-bold uppercase tracking-widest text-xs">
             Browse match details, maps and per-map scoreboards

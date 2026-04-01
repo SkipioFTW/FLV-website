@@ -9,9 +9,9 @@ export default async function TeamsPage({
 }: { 
     searchParams: { team_id?: string; season?: string } 
 }) {
-    const teams = await getTeams();
-    const initialId = searchParams?.team_id ? Number(searchParams.team_id) : undefined;
     const seasonId = searchParams?.season || await getDefaultSeason();
+    const teams = await getTeams(seasonId);
+    const initialId = searchParams?.team_id ? Number(searchParams.team_id) : undefined;
 
     return (
         <div className="min-h-screen">

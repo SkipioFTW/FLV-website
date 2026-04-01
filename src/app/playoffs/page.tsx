@@ -37,7 +37,7 @@ export default async function PlayoffsPage({
                             </svg>
                         </div>
                         <h3 className="font-display text-3xl font-black italic text-white uppercase mb-4 tracking-tighter">
-                            No Playoffs for Season {seasonId.replace('S', '')}
+                            {seasonId === 'all' ? 'Career Data' : `No Playoffs for Season ${seasonId.replace('S', '')}`}
                         </h3>
                         <p className="text-foreground/40 font-medium">
                             Playoff brackets have not been constructed for this season. Please check back later!

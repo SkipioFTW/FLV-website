@@ -9,9 +9,9 @@ export default async function PlayersPage({
 }: { 
     searchParams: { player_id?: string; season?: string } 
 }) {
-    const players = await getPlayers();
-    const initialId = searchParams?.player_id ? Number(searchParams.player_id) : undefined;
     const seasonId = searchParams?.season || await getDefaultSeason();
+    const players = await getPlayers(seasonId);
+    const initialId = searchParams?.player_id ? Number(searchParams.player_id) : undefined;
 
     return (
         <div className="min-h-screen">
