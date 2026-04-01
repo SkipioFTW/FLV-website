@@ -82,7 +82,7 @@ export default function TeamAnalytics({ teams, initialSelectedId, seasonId }: Pr
                     >
                         <div className="w-8 h-8 border-4 border-val-blue border-t-transparent rounded-full animate-spin" />
                     </motion.div>
-                ) : stats ? (
+                ) : stats && stats.progression.length > 0 ? (
                     <motion.div
                         key={stats.id}
                         initial={{ opacity: 0, y: 20 }}

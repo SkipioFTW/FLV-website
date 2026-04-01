@@ -21,6 +21,24 @@ export default function MetaAnalyticsComponent({ data }: { data: MetaAnalytics }
         ? data.agents.find(a => a.name === selectedAgent)
         : data.agents[0];
 
+    if (data.agents.length === 0) {
+        return (
+            <div className="glass rounded-xl p-16 text-center border border-white/5">
+                <div className="w-16 h-16 bg-val-blue/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg className="w-8 h-8 text-val-blue/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                </div>
+                <h3 className="font-display text-2xl font-black italic text-foreground/80 uppercase mb-3">
+                    No Meta Analytics Available
+                </h3>
+                <p className="text-foreground/40 text-sm">
+                    Meta-analytics require match data to calculate pick rates and win rates. Data will appear here once Season matches begin.
+                </p>
+            </div>
+        );
+    }
+
     const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             return (

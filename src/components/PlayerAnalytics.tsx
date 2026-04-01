@@ -334,8 +334,16 @@ export default function PlayerAnalytics({ players, initialSelectedId, seasonId }
                         </div>
                     </motion.div>
                 ) : (
-                    <div className="h-[400px] flex items-center justify-center text-foreground/40 italic">
-                        No statistical data found for this player.
+                    <div className="h-[400px] flex flex-col items-center justify-center text-center glass rounded-xl border border-white/5">
+                        <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 text-foreground/20">
+                           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                           </svg>
+                        </div>
+                        <h3 className="text-xl font-bold text-foreground/80 mb-2">No Stats for Season {seasonId.replace('S', '')}</h3>
+                        <p className="text-foreground/40 max-w-xs mx-auto">
+                            This player hasn't participated in any recorded matches during the selected season.
+                        </p>
                     </div>
                 )}
             </AnimatePresence>

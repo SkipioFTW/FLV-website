@@ -206,8 +206,11 @@ export default function LeaderboardFilters({
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={11} className="px-6 py-20 text-center text-foreground/40 italic">
-                                    No players found in this rank category matching your criteria.
+                                <td colSpan={11} className="px-6 py-20 text-center">
+                                    <h4 className="text-foreground/80 font-bold mb-2">No players found</h4>
+                                    <p className="text-foreground/40 text-xs italic">
+                                        No matches have been played in this category for the selected season yet.
+                                    </p>
                                 </td>
                             </tr>
                         )}

@@ -7,7 +7,10 @@ import functools
 import psycopg2
 from psycopg2 import pool
 from dotenv import load_dotenv
+import requests
+import re
 import pandas as pd
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +22,7 @@ if GUILD_ID:
     GUILD_ID = int(GUILD_ID)
 
 DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DB_CONNECTION_STRING")
+PORTAL_URL = os.getenv("PORTAL_URL", "https://valorant-portal.vercel.app")
 
 # --- DATABASE CONNECTION POOLING ---
 
@@ -168,7 +172,7 @@ async def on_ready():
 # --- INFO COMMANDS ---
 
 @bot.tree.command(name="standings", description="View current group standings")
-async def standings(interaction: discord.Interaction, group: str):
+async def standings(interaction: discord.Interaction, group: str, season: str = "S24"):
     try:
         await interaction.response.defer()
     except:
@@ -214,7 +218,7 @@ async def standings(interaction: discord.Interaction, group: str):
                     END as points_against
                 FROM public.matches m
                 LEFT JOIN public.match_maps mm ON m.id = mm.match_id AND mm.map_index = 0
-                WHERE m.status = 'completed' AND m.match_type = 'regular'
+                WHERE m.status = 'completed' AND m.match_type = 'regular' AND m.season_id = %s
                 UNION ALL
                 SELECT
                     m.team2_id as team_id,
@@ -246,7 +250,7 @@ async def standings(interaction: discord.Interaction, group: str):
                     END as points_against
                 FROM public.matches m
                 LEFT JOIN public.match_maps mm ON m.id = mm.match_id AND mm.map_index = 0
-                WHERE m.status = 'completed' AND m.match_type = 'regular'
+                WHERE m.status = 'completed' AND m.match_type = 'regular' AND m.season_id = %s
             )
             SELECT t.name, t.tag, COUNT(tm.team_id) as played, SUM(tm.win) as wins, SUM(tm.loss) as losses, SUM(tm.points) as points, (SUM(tm.points) - SUM(tm.points_against)) as pd
             FROM public.teams t
@@ -257,17 +261,17 @@ async def standings(interaction: discord.Interaction, group: str):
             """
             print("InfoBot: Creating cursor")
             cursor = conn.cursor()
-            print(f"InfoBot: Executing standings query for group {group}")
-            cursor.execute(query, (group,))
+            print(f"InfoBot: Executing standings query for group {group} season {season}")
+            cursor.execute(query, (season, season, group))
             print("InfoBot: Query executed, fetching results")
             rows = cursor.fetchall()
             print(f"InfoBot: Rows fetched: {len(rows)}")
             
             if not rows:
-                print(f"InfoBot: No rows found for group {group}")
-                return await interaction.followup.send(f"❌ No data for group `{group}`.")
+                print(f"InfoBot: No rows found for group {group} season {season}")
+                return await interaction.followup.send(f"❌ No data for group `{group}` in season `{season}`.")
             
-            msg = f"🏆 **Group {group.upper()} Standings**\n```\nRank  Team                         P  W  L  Pts  PD\n"
+            msg = f"🏆 **Group {group.upper()} Standings ({season})**\n```\nRank  Team                         P  W  L  Pts  PD\n"
             for i, (name, tag, played, wins, losses, points, pd_val) in enumerate(rows, start=1):
                 msg += f"{i:>2}    {name[:26]:<26}  {played or 0:>2} {wins or 0:>2} {losses or 0:>2} {points or 0:>3} {pd_val or 0:>3}\n"
             msg += "```"
@@ -278,7 +282,7 @@ async def standings(interaction: discord.Interaction, group: str):
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
 @bot.tree.command(name="leaderboard", description="Show top players by ACS")
-async def leaderboard(interaction: discord.Interaction, min_games: int = 0):
+async def leaderboard(interaction: discord.Interaction, min_games: int = 0, season: str = "S24"):
     await interaction.response.defer()
     try:
         with get_conn() as conn:
@@ -290,14 +294,14 @@ async def leaderboard(interaction: discord.Interaction, min_games: int = 0):
                 JOIN matches m ON msm.match_id = m.id
                 JOIN players p ON msm.player_id = p.id
                 LEFT JOIN teams t ON p.default_team_id = t.id
-                WHERE m.status = 'completed'
+                WHERE m.status = 'completed' AND m.season_id = %s
                 GROUP BY p.id, p.name, p.riot_id, p.uuid, t.tag
                 HAVING COUNT(DISTINCT msm.match_id) >= %s
                 ORDER BY avg_acs DESC LIMIT 10
-            """, (min_games,))
+            """, (season, min_games))
             rows = cursor.fetchall()
-            if not rows: return await interaction.followup.send("No data found.")
-            embed = discord.Embed(title="🏆 Leaderboard (ACS)", color=discord.Color.blue())
+            if not rows: return await interaction.followup.send(f"No data found for season `{season}`.")
+            embed = discord.Embed(title=f"🏆 Leaderboard ({season})", color=discord.Color.blue())
             for i, (name, rid, uuid, team, games, acs, k, d) in enumerate(rows, start=1):
                 kd = k / d if d > 0 else k
                 display_name = f"<@{uuid}>" if uuid else name
@@ -308,11 +312,10 @@ async def leaderboard(interaction: discord.Interaction, min_games: int = 0):
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
 @bot.tree.command(name="player_info", description="Look up detailed player stats")
-async def player_info(interaction: discord.Interaction, name: str):
+async def player_info(interaction: discord.Interaction, name: str, season: str = "S24"):
     await interaction.response.defer()
     try:
         # Check if input is a mention <@123...>
-        import re
         mention_match = re.match(r"^<@!?(\d+)>$", name.strip())
         
         with get_conn() as conn:
@@ -328,15 +331,15 @@ async def player_info(interaction: discord.Interaction, name: str):
             row = cursor.fetchone()
             if not row: return await interaction.followup.send(f"❌ Player `{name}` not found.")
             pid, pname, rid, prank, puuid, tname, ttag = row
-            cursor.execute("SELECT COUNT(*), AVG(acs), SUM(kills), SUM(deaths), SUM(assists), AVG(adr), AVG(kast), AVG(hs_pct) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed'", (pid,))
+            cursor.execute("SELECT COUNT(*), AVG(acs), SUM(kills), SUM(deaths), SUM(assists), AVG(adr), AVG(kast), AVG(hs_pct) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed' AND m.season_id = %s", (pid, season))
             agg = cursor.fetchone()
             maps, acs, k, d, a, adr, kast, hs = agg[0] or 0, agg[1] or 0, agg[2] or 0, agg[3] or 0, agg[4] or 0, agg[5] or 0, agg[6] or 0, agg[7] or 0
-            cursor.execute("SELECT agent, COUNT(*) as c, AVG(acs) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed' GROUP BY agent ORDER BY c DESC LIMIT 3", (pid,))
+            cursor.execute("SELECT agent, COUNT(*) as c, AVG(acs) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE msm.player_id = %s AND m.status = 'completed' AND m.season_id = %s GROUP BY agent ORDER BY c DESC LIMIT 3", (pid, season))
             agents = cursor.fetchall()
-            cursor.execute("SELECT m.week, t1.tag, t2.tag, msm.acs, msm.kills, msm.deaths FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id JOIN teams t1 ON m.team1_id = t1.id JOIN teams t2 ON m.team2_id = t2.id WHERE msm.player_id = %s AND m.status = 'completed' ORDER BY m.id DESC LIMIT 3", (pid,))
+            cursor.execute("SELECT m.week, t1.tag, t2.tag, msm.acs, msm.kills, msm.deaths FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id JOIN teams t1 ON m.team1_id = t1.id JOIN teams t2 ON m.team2_id = t2.id WHERE msm.player_id = %s AND m.status = 'completed' AND m.season_id = %s ORDER BY m.id DESC LIMIT 3", (pid, season))
             history = cursor.fetchall()
-
-            embed = discord.Embed(title=f"👤 {pname}", color=discord.Color.green())
+            
+            embed = discord.Embed(title=f"👤 {pname} ({season})", color=discord.Color.green())
             desc = f"**Team:** {tname} [{ttag}]" if tname else "*Free Agent*"
             if puuid: desc += f"\n**User:** <@{puuid}>"
             embed.description = desc
@@ -354,7 +357,7 @@ async def player_info(interaction: discord.Interaction, name: str):
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
 @bot.tree.command(name="team_info", description="Look up team stats and roster")
-async def team_info(interaction: discord.Interaction, name: str):
+async def team_info(interaction: discord.Interaction, name: str, season: str = "S24"):
     await interaction.response.defer()
     try:
         with get_conn() as conn:
@@ -366,12 +369,18 @@ async def team_info(interaction: discord.Interaction, name: str):
             tid, tname, ttag, tgroup = row
             cursor.execute("SELECT name, riot_id, uuid FROM players WHERE default_team_id = %s", (tid,))
             roster = cursor.fetchall()
-            cursor.execute("SELECT map_name, COUNT(*), SUM(CASE WHEN winner_id = %s THEN 1 ELSE 0 END) FROM match_maps WHERE (match_id IN (SELECT id FROM matches WHERE team1_id = %s OR team2_id = %s)) GROUP BY map_name ORDER BY 2 DESC", (tid, tid, tid))
+            cursor.execute("""
+                SELECT mm.map_name, COUNT(*), SUM(CASE WHEN m.winner_id = %s THEN 1 ELSE 0 END) 
+                FROM match_maps mm
+                JOIN matches m ON mm.match_id = m.id
+                WHERE (m.team1_id = %s OR m.team2_id = %s) AND m.season_id = %s AND m.status = 'completed'
+                GROUP BY mm.map_name ORDER BY 2 DESC
+            """, (tid, tid, tid, season))
             maps = cursor.fetchall()
-            cursor.execute("SELECT m.week, t1.tag, t2.tag, m.score_t1, m.score_t2, m.winner_id FROM matches m JOIN teams t1 ON m.team1_id = t1.id JOIN teams t2 ON m.team2_id = t2.id WHERE (m.team1_id = %s OR m.team2_id = %s) AND m.status = 'completed' ORDER BY m.id DESC LIMIT 3", (tid, tid))
+            cursor.execute("SELECT m.week, t1.tag, t2.tag, m.score_t1, m.score_t2, m.winner_id FROM matches m JOIN teams t1 ON m.team1_id = t1.id JOIN teams t2 ON m.team2_id = t2.id WHERE (m.team1_id = %s OR m.team2_id = %s) AND m.status = 'completed' AND m.season_id = %s ORDER BY m.id DESC LIMIT 3", (tid, tid, season))
             history = cursor.fetchall()
-
-            embed = discord.Embed(title=f"🛡️ {tname}", color=discord.Color.blue())
+            
+            embed = discord.Embed(title=f"🛡️ {tname} ({season})", color=discord.Color.blue())
             embed.description = f"**Tag:** `{ttag}` | **Group:** `{tgroup}`"
             if roster: 
                 roster_str = []
@@ -385,6 +394,42 @@ async def team_info(interaction: discord.Interaction, name: str):
     except Exception as e:
         print(f"InfoBot: Team Info Command Error - {e}")
         await interaction.followup.send(f"❌ Error: {str(e)}")
+
+@bot.tree.command(name="ask_ai", description="Ask the AI Analyst a question about the tournament")
+async def ask_ai(interaction: discord.Interaction, question: str):
+    await interaction.response.defer()
+    try:
+        payload = {
+            "messages": [{"role": "user", "content": question}],
+            "context": "You are the FLV Tournament AI Analyst. Analyze statistics and answer questions about the current season."
+        }
+        headers = {"Content-Type": "application/json"}
+        api_url = f"{PORTAL_URL}/api/chat"
+        print(f"InfoBot: Calling AI API at {api_url}")
+        
+        response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Most streaming APIs for chat return a structure that might need parsing, 
+            # but assuming the portal's /api/chat returns a full response for bot.
+            ai_message = data.get("content", "I am currently processing that information.")
+            if len(ai_message) > 1900:
+                ai_message = ai_message[:1900] + "..."
+            
+            embed = discord.Embed(
+                title="🤖 AI Tournament Analyst", 
+                description=ai_message,
+                color=discord.Color.red()
+            )
+            embed.set_footer(text=f"Requested by {interaction.user.name}")
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send(f"❌ AI API returned error: {response.status_code}")
+            
+    except Exception as e:
+        print(f"InfoBot: Ask AI Error - {e}")
+        await interaction.followup.send(f"❌ Error connecting to AI Analyst: {str(e)}")
 
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
