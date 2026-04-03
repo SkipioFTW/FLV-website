@@ -2,13 +2,12 @@ import Navbar from '@/components/Navbar';
 import TeamAnalytics from '@/components/TeamAnalytics';
 import { getTeams, getDefaultSeason } from '@/lib/data';
 
-export const revalidate = 900; // Revalidate every 15 minutes
+export const dynamic = 'force-dynamic';
 
-export default async function TeamsPage({ 
-    searchParams 
-}: { 
-    searchParams: { team_id?: string; season?: string } 
+export default async function TeamsPage(props: {
+    searchParams: Promise<{ team_id?: string; season?: string }>
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams?.season || await getDefaultSeason();
     const teams = await getTeams(seasonId);
     const initialId = searchParams?.team_id ? Number(searchParams.team_id) : undefined;

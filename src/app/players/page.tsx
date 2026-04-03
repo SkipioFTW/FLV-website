@@ -2,13 +2,12 @@ import Navbar from '@/components/Navbar';
 import PlayerAnalytics from '@/components/PlayerAnalytics';
 import { getPlayers, getDefaultSeason } from '@/lib/data';
 
-export const revalidate = 900; // Revalidate every 15 minutes
+export const dynamic = 'force-dynamic';
 
-export default async function PlayersPage({ 
-    searchParams 
-}: { 
-    searchParams: { player_id?: string; season?: string } 
+export default async function PlayersPage(props: {
+    searchParams: Promise<{ player_id?: string; season?: string }>
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams?.season || await getDefaultSeason();
     const players = await getPlayers(seasonId);
     const initialId = searchParams?.player_id ? Number(searchParams.player_id) : undefined;

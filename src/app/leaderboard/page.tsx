@@ -3,13 +3,12 @@ import Navbar from '@/components/Navbar';
 import LeaderboardFilters from '@/components/LeaderboardFilters';
 import Link from 'next/link';
 
-export const revalidate = 900; // Revalidate every 15 minutes
+export const dynamic = 'force-dynamic';
 
-export default async function LeaderboardPage({
-    searchParams,
-}: {
-    searchParams: { type?: string; season?: string };
+export default async function LeaderboardPage(props: {
+    searchParams: Promise<{ type?: string; season?: string }>;
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams.season || await getDefaultSeason();
     const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
     const leaderboard = await getLeaderboard(0, matchType, seasonId);

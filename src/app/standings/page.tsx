@@ -2,13 +2,12 @@ import { getStandings, getMetaAnalytics, getDefaultSeason } from '@/lib/data';
 import Navbar from '@/components/Navbar';
 import StandingsTabs from '@/components/StandingsTabs';
 
-export const revalidate = 900; // Revalidate every 15 minutes
+export const dynamic = 'force-dynamic';
 
-export default async function StandingsPage({
-    searchParams,
-}: {
-    searchParams: { season?: string };
+export default async function StandingsPage(props: {
+    searchParams: Promise<{ season?: string }>;
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams.season || await getDefaultSeason();
     const groupedStandings = await getStandings(seasonId);
     const metaData = await getMetaAnalytics(seasonId);

@@ -2,15 +2,14 @@ import Navbar from '@/components/Navbar';
 import TeamComparison from '@/components/TeamComparison';
 import { getTeams, getDefaultSeason } from '@/lib/data';
 
-export const revalidate = 900; // Revalidate every 15 minutes
+export const dynamic = 'force-dynamic';
 
-export default async function TeamComparePage({
-    searchParams,
-}: {
-    searchParams: { season?: string };
+export default async function TeamComparePage(props: {
+    searchParams: Promise<{ season?: string }>;
 }) {
-    const teams = await getTeams();
+    const searchParams = await props.searchParams;
     const seasonId = searchParams.season || await getDefaultSeason();
+    const teams = await getTeams(seasonId);
 
     return (
         <div className="min-h-screen">

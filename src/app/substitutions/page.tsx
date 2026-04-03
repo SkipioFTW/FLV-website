@@ -3,13 +3,12 @@ import Navbar from '@/components/Navbar';
 import SubstitutionView from '@/components/SubstitutionView';
 import { getSubstitutionAnalytics, getDefaultSeason } from '@/lib/data';
 
-export const revalidate = 900; // Revalidate every 15 minutes
+export const dynamic = 'force-dynamic';
 
-export default async function SubstitutionsPage({
-    searchParams,
-}: {
-    searchParams: { type?: string, season?: string };
+export default async function SubstitutionsPage(props: {
+    searchParams: Promise<{ type?: string, season?: string }>;
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams.season || await getDefaultSeason();
     const matchType = searchParams.type === 'playoff' ? 'playoff' : searchParams.type === 'regular' ? 'regular' : undefined;
     const analytics = await getSubstitutionAnalytics(matchType, seasonId);

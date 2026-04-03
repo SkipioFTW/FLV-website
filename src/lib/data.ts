@@ -445,9 +445,11 @@ export async function getStandings(seasonId?: string): Promise<Map<string, Stand
             const teamIds = (history || []).map(h => h.team_id);
             if (teamIds.length > 0) {
                 teamsQuery = teamsQuery.in('id', teamIds);
+            } else if (activeSeason !== 'S23') {
+                // If history is empty for a season that isn't S23, show nothing
+                return new Map();
             }
-            // If history is empty, we don't filter (fallback to showing all teams)
-            // This handles cases where history isn't fully populated yet.
+            // For S23, if history is empty, we don't filter (fallback to showing all teams)
         }
 
         const { data: teams, error: teamsError } = await teamsQuery;
@@ -609,7 +611,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
         const isAllTime = activeSeason === 'all';
 
         // 1. Fetch all players and teams for lookup
-        let playersQuery = supabase.from('players').select('id, name, riot_id, default_team_id, rank');
+        let playersQuery = supabase.from('players').select('id, name, riot_id, default_team_id, rank').order('id');
 
         if (!isAllTime) {
             const { data: history } = await supabase
@@ -620,7 +622,10 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
             const pIds = (history || []).map(h => h.player_id);
             if (pIds.length > 0) {
                 playersQuery = playersQuery.in('id', pIds);
+            } else if (activeSeason !== 'S23') {
+                return [];
             }
+            // For S23, show all players if history is missing
         }
 
         const [playersRes, teamsRes] = await Promise.all([
@@ -656,7 +661,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                 query = query.eq('match_type', matchType);
             }
 
-            const { data, error } = await query.range(mFrom, mFrom + mLimit - 1);
+            const { data, error } = await query.order('id').range(mFrom, mFrom + mLimit - 1);
 
             if (error) throw error;
             if (!data || data.length === 0) break;
@@ -673,6 +678,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
             const { data, error } = await supabase
                 .from('match_stats_map')
                 .select('player_id, acs, kills, deaths, assists, match_id, adr, kast, hs_pct, fk')
+                .order('id')
                 .range(sFrom, sFrom + sLimit - 1);
 
             if (error) throw error;
@@ -1212,7 +1218,10 @@ export async function getTeams(seasonId?: string): Promise<{ id: number; name: s
             const teamIds = (history || []).map(h => h.team_id);
             if (teamIds.length > 0) {
                 query = query.in('id', teamIds);
+            } else if (activeSeason !== 'S23') {
+                return [];
             }
+            // For S23, show all teams if history is missing
         }
 
         const { data, error } = await query;
@@ -1243,7 +1252,10 @@ export async function getPlayers(seasonId?: string): Promise<{ id: number; name:
             const pIds = (history || []).map(h => h.player_id);
             if (pIds.length > 0) {
                 query = query.in('id', pIds);
+            } else if (activeSeason !== 'S23') {
+                return [];
             }
+            // For S23, show all players if history is missing
         }
 
         const { data, error } = await query;

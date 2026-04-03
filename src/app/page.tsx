@@ -2,11 +2,10 @@ import Navbar from "@/components/Navbar";
 import Link from 'next/link';
 import { getGlobalStats, getDefaultSeason } from '@/lib/data';
 
-export default async function Home({
-    searchParams,
-}: {
-    searchParams: { season?: string };
+export default async function Home(props: {
+    searchParams: Promise<{ season?: string }>;
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams.season || await getDefaultSeason();
     const stats = await getGlobalStats(seasonId);
 

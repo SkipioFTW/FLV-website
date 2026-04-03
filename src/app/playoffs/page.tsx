@@ -5,11 +5,10 @@ import { getPlayoffMatches, getDefaultSeason } from "@/lib/data";
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function PlayoffsPage({
-    searchParams,
-}: {
-    searchParams: { season?: string };
+export default async function PlayoffsPage(props: {
+    searchParams: Promise<{ season?: string }>;
 }) {
+    const searchParams = await props.searchParams;
     const seasonId = searchParams.season || await getDefaultSeason();
     const matches = await getPlayoffMatches(seasonId);
 
