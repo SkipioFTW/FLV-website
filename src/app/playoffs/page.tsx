@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import PlayoffsTabs from "@/components/PlayoffsTabs";
 import { getPlayoffMatches, getDefaultSeason } from "@/lib/data";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
