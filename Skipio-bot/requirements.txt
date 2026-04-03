@@ -8,3 +8,5 @@ PyGithub
 python-dotenv
 psycopg2-binary
 supabase
+matplotlib
+seaborn
