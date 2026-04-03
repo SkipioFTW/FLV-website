@@ -639,6 +639,95 @@ async def map_analytics(interaction: discord.Interaction, team: str, season: str
         print(f"InfoBot: Map Analytics Error - {e}")
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
+@bot.tree.command(name="meta_stats", description="View league-wide agent and map analytics")
+@app_commands.describe(season="Season ID (e.g. S23, S24, all)")
+async def meta_stats(interaction: discord.Interaction, season: str = None):
+    await interaction.response.defer()
+    if season is None:
+        season = await run_in_executor(get_default_season)
+
+    try:
+        with get_conn() as conn:
+            cursor = conn.cursor()
+            season_filter = "(m.season_id = %s OR (m.season_id IS NULL AND %s = 'S23'))" if season != 'all' else "1=1"
+
+            # Agent Stats
+            cursor.execute(f"""
+                SELECT agent, COUNT(*) as picks, AVG(acs) as avg_acs,
+                       SUM(CASE WHEN msm.team_id = mm.winner_id THEN 1 ELSE 0 END)::float / COUNT(*) as win_rate
+                FROM match_stats_map msm
+                JOIN matches m ON msm.match_id = m.id
+                JOIN match_maps mm ON msm.match_id = mm.match_id AND msm.map_index = mm.map_index
+                WHERE m.status = 'completed' AND {season_filter}
+                GROUP BY agent ORDER BY picks DESC LIMIT 5
+            """, (season, season) if season != 'all' else ())
+            agents = cursor.fetchall()
+
+            # Map Stats
+            cursor.execute(f"""
+                SELECT map_name, COUNT(*) as count, AVG(team1_rounds + team2_rounds) as avg_rounds
+                FROM match_maps mm
+                JOIN matches m ON mm.match_id = m.id
+                WHERE m.status = 'completed' AND {season_filter}
+                GROUP BY map_name ORDER BY count DESC
+            """, (season, season) if season != 'all' else ())
+            maps = cursor.fetchall()
+
+            embed = discord.Embed(title=f"📊 Meta Analytics ({season})", color=discord.Color.gold())
+
+            if agents:
+                agent_str = "\n".join([f"• **{a}**: {p} picks | {round(wr*100)}% WR | {round(acs)} ACS" for a, p, acs, wr in agents])
+                embed.add_field(name="🎭 Top Agents", value=agent_str, inline=False)
+
+            if maps:
+                map_str = "\n".join([f"• **{n}**: {c} matches | {round(r, 1)} avg rounds" for n, c, r in maps])
+                embed.add_field(name="🗺️ Map Pool", value=map_str, inline=False)
+
+            await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"InfoBot: Meta Stats Error - {e}")
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
+@bot.tree.command(name="match_result", description="View detailed scoreboard for a match")
+@app_commands.describe(match_id="The ID of the match")
+async def match_result(interaction: discord.Interaction, match_id: int):
+    await interaction.response.defer()
+    try:
+        with get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m.id, m.week, m.group_name, t1.name, t2.name, m.score_t1, m.score_t2, m.status, m.season_id
+                FROM matches m
+                JOIN teams t1 ON m.team1_id = t1.id
+                JOIN teams t2 ON m.team2_id = t2.id
+                WHERE m.id = %s
+            """, (match_id,))
+            m = cursor.fetchone()
+            if not m: return await interaction.followup.send(f"❌ Match #{match_id} not found.")
+
+            mid, wk, grp, t1n, t2n, s1, s2, status, sid = m
+
+            embed = discord.Embed(title=f"🎮 Match Result #{mid}", color=discord.Color.dark_grey())
+            embed.description = f"**{t1n}** `{s1}` - `{s2}` **{t2n}**\nSeason: `{sid or 'S23'}` | Week: `{wk}` | Group: `{grp}`"
+
+            # Top Performers
+            cursor.execute("""
+                SELECT p.name, msm.agent, msm.acs, msm.kills, msm.deaths
+                FROM match_stats_map msm
+                JOIN players p ON msm.player_id = p.id
+                WHERE msm.match_id = %s
+                ORDER BY msm.acs DESC LIMIT 5
+            """, (match_id,))
+            perf = cursor.fetchall()
+            if perf:
+                perf_str = "\n".join([f"• **{n}** ({a}): {acs} ACS | {k}/{d}" for n, a, acs, k, d in perf])
+                embed.add_field(name="⭐️ Top Performers", value=perf_str, inline=False)
+
+            await interaction.followup.send(embed=embed)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
 @bot.tree.command(name="ask_ai", description="Ask the AI Analyst a question about the tournament")
 @app_commands.describe(question="Your question about the league", season="Season ID (e.g. S23, S24, all)")
 async def ask_ai(interaction: discord.Interaction, question: str, season: str = None):

@@ -20,8 +20,12 @@ import { supabase } from "@/lib/supabase";
 import type { PendingMatch, PendingPlayer, MatchEntry } from "@/lib/data";
 import type { PlayoffMatch } from "@/lib/data";
 
+import { getSeasons, getDefaultSeason } from "@/lib/data";
+
 export default function AdminPage() {
     const [activeTab, setActiveTab] = useState<'pending' | 'schedule' | 'playoffs' | 'editor' | 'players' | 'snapshot'>('pending');
+    const [seasons, setSeasons] = useState<{ id: string, name: string }[]>([]);
+    const [selectedSeason, setSelectedSeason] = useState<string>("");
     const [pending, setPending] = useState<{ matches: PendingMatch[], players: PendingPlayer[] }>({ matches: [], players: [] });
     const [matches, setMatches] = useState<MatchEntry[]>([]);
     const [playoffMatches, setPlayoffMatches] = useState<PlayoffMatch[]>([]);
@@ -44,17 +48,26 @@ export default function AdminPage() {
     }, []);
 
     useEffect(() => {
+        const loadInitial = async () => {
+            const [sArr, def] = await Promise.all([getSeasons(), getDefaultSeason()]);
+            setSeasons(sArr.filter(s => s.id !== 'all'));
+            setSelectedSeason(def);
+        };
+        loadInitial();
+    }, []);
+
+    useEffect(() => {
         const loadData = async () => {
-            if (!authorized) {
-                setLoading(false);
+            if (!authorized || !selectedSeason) {
+                if (authorized) setLoading(false);
                 return;
             }
             setLoading(true);
             const [p, m, t, pm, s] = await Promise.all([
                 getPendingRequests(),
-                getAllMatches(),
+                getAllMatches(selectedSeason),
                 getTeamsBasic(),
-                getPlayoffMatches(),
+                getPlayoffMatches(selectedSeason),
                 getDashboardStats()
             ]);
             setPending(p);
@@ -65,7 +78,7 @@ export default function AdminPage() {
             setLoading(false);
         };
         loadData();
-    }, [authorized]);
+    }, [authorized, selectedSeason]);
 
     const handleUpdatePending = async (type: 'match' | 'player', id: number, status: string) => {
         const success = await updatePendingRequestStatus(type, id, status);
@@ -338,17 +351,18 @@ export default function AdminPage() {
                         )}
 
                         {activeTab === 'schedule' && (
-                            <ScheduleManager teams={teams} onUpdate={() => {
-                                getAllMatches().then(setMatches);
+                            <ScheduleManager teams={teams} seasonId={selectedSeason} onUpdate={() => {
+                                getAllMatches(selectedSeason).then(setMatches);
                             }} />
                         )}
 
                         {activeTab === 'playoffs' && (
                             <PlayoffBracketEditor
                                 teams={teams}
+                                seasonId={selectedSeason}
                                 matches={playoffMatches}
                                 onUpdate={async () => {
-                                    const pm = await getPlayoffMatches();
+                                    const pm = await getPlayoffMatches(selectedSeason);
                                     setPlayoffMatches(pm);
                                 }}
                             />
@@ -374,9 +388,11 @@ export default function AdminPage() {
  */
 function ScheduleManager({
     teams,
+    seasonId,
     onUpdate
 }: {
     teams: { id: number, name: string, tag: string, group_name: string }[],
+    seasonId: string,
     onUpdate: () => void
 }) {
     const [bulkText, setBulkText] = useState("");
@@ -392,11 +408,11 @@ function ScheduleManager({
 
     const loadScheduled = async () => {
         const { getAllMatches } = await import("@/lib/data");
-        const all = await getAllMatches();
+        const all = await getAllMatches(seasonId);
         setScheduledMatches(all.filter(m => m.status === 'scheduled'));
     };
 
-    useEffect(() => { loadScheduled(); }, []);
+    useEffect(() => { loadScheduled(); }, [seasonId]);
 
     const handleBulkAdd = async () => {
         if (!bulkText.trim()) return;
@@ -417,7 +433,8 @@ function ScheduleManager({
                     status: 'scheduled' as const,
                     format,
                     maps_played: 0,
-                    winner_id: null
+                    winner_id: null,
+                    season_id: seasonId
                 };
             }).filter(Boolean) as any[];
 
@@ -531,8 +548,9 @@ function ScheduleManager({
                                         status: 'scheduled',
                                         format,
                                         maps_played: 0,
-                                        winner_id: null
-                                    });
+                                        winner_id: null,
+                                        season_id: seasonId
+                                    } as any);
                                     setStatus("✓ Match added!");
                                     setT1Id(0);
                                     setT2Id(0);
@@ -649,10 +667,12 @@ function ScheduleManager({
  */
 function PlayoffBracketEditor({
     teams,
+    seasonId,
     matches,
     onUpdate
 }: {
     teams: { id: number, name: string, tag: string, group_name: string }[],
+    seasonId: string,
     matches: PlayoffMatch[],
     onUpdate: () => void
 }) {
@@ -665,7 +685,7 @@ function PlayoffBracketEditor({
     const [autoAdvance, setAutoAdvance] = useState(true);
     useEffect(() => {
         import('@/lib/data').then(({ getStandings }) => {
-            getStandings().then(gs => {
+            getStandings(seasonId).then(gs => {
                 const opts: Array<{ id: number, name: string, tag: string, group_name: string }> = [];
                 const autoByes: Array<number | null> = Array.from({ length: 8 }, () => null);
 
@@ -785,7 +805,8 @@ function PlayoffBracketEditor({
                                                 match_type: 'playoff',
                                                 playoff_round: 1,
                                                 bracket_pos: i,
-                                                bracket_label: `R1 #${i}`
+                                                bracket_label: `R1 #${i}`,
+                                                season_id: seasonId
                                             });
                                         }
                                         await fetch('/api/admin/matches/bulk', {
@@ -858,7 +879,8 @@ function PlayoffBracketEditor({
                                                     match_type: 'playoff',
                                                     playoff_round: 2,
                                                     bracket_pos: i,
-                                                    bracket_label: `R2 #${i}`
+                                                    bracket_label: `R2 #${i}`,
+                                                    season_id: seasonId
                                                 })
                                             } as any);
                                         }

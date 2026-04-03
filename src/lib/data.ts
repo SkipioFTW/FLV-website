@@ -1283,6 +1283,21 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
 
         if (teamError || !team) throw teamError || new Error('Team not found');
 
+        // 1.2 Override with historical captains if viewing a past season
+        if (!isAllTime) {
+            const { data: history } = await supabase
+                .from('team_history')
+                .select('captain, co_captain')
+                .eq('team_id', teamId)
+                .eq('season_id', activeSeason)
+                .single();
+
+            if (history && history.captain) {
+                team.captain = history.captain;
+                team.co_captain = history.co_captain;
+            }
+        }
+
         // 1.5 Verify team participation in the requested season
         if (!isAllTime) {
             const { data: history } = await supabase
@@ -2006,7 +2021,7 @@ export async function updatePendingRequestStatus(type: 'match' | 'player', id: n
 /**
  * Create a new match
  */
-export async function createMatch(match: Omit<MatchEntry, 'id' | 'team1' | 'team2'> & { team1_id: number, team2_id: number }): Promise<number | null> {
+export async function createMatch(match: Omit<MatchEntry, 'id' | 'team1' | 'team2'> & { team1_id: number, team2_id: number, season_id?: string }): Promise<number | null> {
     try {
         const res = await fetch('/api/admin/matches/create', {
             method: 'POST',
@@ -2022,7 +2037,8 @@ export async function createMatch(match: Omit<MatchEntry, 'id' | 'team1' | 'team
                 match_type: match.match_type || (match.group_name === 'Playoffs' ? 'playoff' : 'regular'),
                 playoff_round: match.playoff_round,
                 bracket_pos: match.bracket_pos,
-                bracket_label: match.bracket_label
+                bracket_label: match.bracket_label,
+                season_id: (match as any).season_id || await getDefaultSeason()
             })
         } as any);
         if (!res.ok) throw new Error(await res.text());
@@ -2077,8 +2093,9 @@ export async function updateMatch(id: number, match: MatchUpdate): Promise<boole
 /**
  * Bulk create matches (for the Bulk Add parser)
  */
-export async function bulkCreateMatches(matches: (Omit<MatchEntry, 'id' | 'team1' | 'team2'> & { team1_id: number, team2_id: number })[]): Promise<boolean> {
+export async function bulkCreateMatches(matches: (Omit<MatchEntry, 'id' | 'team1' | 'team2'> & { team1_id: number, team2_id: number, season_id?: string })[]): Promise<boolean> {
     try {
+        const defaultSeason = await getDefaultSeason();
         const payload = matches.map(m => ({
             week: m.week,
             group_name: m.group_name,
@@ -2090,7 +2107,8 @@ export async function bulkCreateMatches(matches: (Omit<MatchEntry, 'id' | 'team1
             match_type: m.match_type || (m.group_name === 'Playoffs' ? 'playoff' : 'regular'),
             playoff_round: m.playoff_round,
             bracket_pos: m.bracket_pos,
-            bracket_label: m.bracket_label
+            bracket_label: m.bracket_label,
+            season_id: (m as any).season_id || defaultSeason
         }));
         const res = await fetch('/api/admin/matches/bulk', {
             method: 'POST',
@@ -2372,7 +2390,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                     bracket_label: `R2 #${pos}`
                 } as any);
             }
-        } else {
+        } else if (round < 5) {
             // ── R2+ → next round: sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.)
             const siblingPos = pos % 2 === 1 ? pos + 1 : pos - 1;
             const targetPos = Math.ceil(Math.min(pos, siblingPos) / 2);
@@ -2422,6 +2440,12 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                 }
             }
             // else: sibling not yet completed, nothing to do — wait for the other match
+        } else if (round === 5) {
+            // ── Grand Final Completed: Set Season Winner
+            const { data: match } = await supabase.from('matches').select('season_id, winner_id').eq('id', matchId).single();
+            if (match?.season_id && match.winner_id) {
+                await supabase.from('seasons').update({ winner_id: match.winner_id }).eq('id', match.season_id);
+            }
         }
     } catch (e) {
         console.error('Error advancing bracket:', e);
