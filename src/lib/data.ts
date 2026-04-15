@@ -28,7 +28,7 @@ export async function getSeasons(): Promise<{ id: string, name: string, is_activ
             .from('seasons')
             .select('*')
             .order('id', { ascending: false });
-        
+
         if (error) throw error;
         const seasons = data || [];
         return [...seasons, { id: 'all', name: 'All Time', is_active: false }];
@@ -1707,7 +1707,7 @@ export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
 
         // 1. Fetch counts in parallel
         const [teamsRes, matchesRes, playersRes] = await Promise.all([
-            supabase.from('teams').select('*', { count: 'exact', head: true }),
+            supabase.from('teams').select('*', { count: 'exact', head: true }).eq("season_id", getDefaultSeason()),
             matchesQuery,
             supabase.from('players').select('*', { count: 'exact', head: true })
         ]);
