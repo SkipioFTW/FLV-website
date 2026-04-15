@@ -509,7 +509,24 @@ def generate_player_chart(player_id, season, chart_type="acs"):
         ax.fill_between(df['week'], df[chart_type], alpha=0.2, color=colors[chart_type])
 
         # League Average (Simulation)
+<<<<<<< Updated upstream
         cursor.execute(f"SELECT AVG({chart_type}) FROM match_stats_map msm JOIN matches m ON msm.match_id = m.id WHERE m.status = 'completed' AND {season_filter}", (season, season) if season != 'all' else ())
+=======
+        if chart_type == "kd":
+            cursor.execute(f"""
+                SELECT AVG(msm.kills::float / NULLIF(msm.deaths, 0))
+                FROM match_stats_map msm
+                JOIN matches m ON msm.match_id = m.id
+                WHERE m.status = 'completed' AND {season_filter}
+            """, (season, season) if season != 'all' else ())
+        else:
+            cursor.execute(f"""
+                SELECT AVG(msm.{chart_type})
+                FROM match_stats_map msm
+                JOIN matches m ON msm.match_id = m.id
+                WHERE m.status = 'completed' AND {season_filter}
+            """, (season, season) if season != 'all' else ())
+>>>>>>> Stashed changes
         league_avg = cursor.fetchone()[0] or 0
         ax.axhline(league_avg, color='yellow', linestyle='--', alpha=0.5, label='League AVG')
 
@@ -532,6 +549,7 @@ def generate_player_chart(player_id, season, chart_type="acs"):
 @bot.tree.command(name="stats_chart", description="Generate interactive performance charts for a player")
 @app_commands.describe(name="Player name or @mention", season="Season ID (e.g. S23, S24, all)")
 async def stats_chart(interaction: discord.Interaction, name: str, season: str = None):
+<<<<<<< Updated upstream
     await interaction.response.defer()
     if season is None:
         season = await run_in_executor(get_default_season)
@@ -692,7 +710,121 @@ async def meta_stats(interaction: discord.Interaction, season: str = None):
 @bot.tree.command(name="match_result", description="View detailed scoreboard for a match")
 @app_commands.describe(match_id="The ID of the match")
 async def match_result(interaction: discord.Interaction, match_id: int):
+=======
+>>>>>>> Stashed changes
     await interaction.response.defer()
+    if season is None:
+        season = await run_in_executor(get_default_season)
+
+    try:
+        mention_match = re.match(r"^<@!?(\d+)>$", name.strip())
+        with get_conn() as conn:
+            cursor = conn.cursor()
+            if mention_match:
+                cursor.execute("SELECT id, name FROM players WHERE uuid = %s LIMIT 1", (mention_match.group(1),))
+            else:
+                cursor.execute("SELECT id, name FROM players WHERE name ILIKE %s OR riot_id ILIKE %s LIMIT 1", (name, name))
+
+            row = cursor.fetchone()
+            if not row: return await interaction.followup.send(f"❌ Player `{name}` not found.")
+            pid, pname = row
+
+            file, embed = await run_in_executor(generate_player_chart, pid, season, "acs")
+            if not file:
+                return await interaction.followup.send(f"❌ No match data found for {pname} in {season}.")
+
+            view = ChartControls(pid, season)
+            await interaction.followup.send(file=file, embed=embed, view=view)
+
+    except Exception as e:
+        print(f"InfoBot: Chart Command Error - {e}")
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
+class MapStatsView(discord.ui.View):
+    def __init__(self, team_id, season):
+        super().__init__(timeout=180)
+        self.team_id = team_id
+        self.season = season
+
+    async def update_chart(self, interaction: discord.Interaction):
+        file, embed = await run_in_executor(generate_team_map_chart, self.team_id, self.season)
+        await interaction.response.edit_message(attachments=[file], embed=embed, view=self)
+
+def generate_team_map_chart(team_id, season):
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        season_filter = "(m.season_id = %s OR (m.season_id IS NULL AND %s = 'S23'))" if season != 'all' else "1=1"
+
+        cursor.execute(f"""
+            SELECT mm.map_name, COUNT(*) as played, SUM(CASE WHEN m.winner_id = %s THEN 1 ELSE 0 END) as wins
+            FROM match_maps mm
+            JOIN matches m ON mm.match_id = m.id
+            WHERE (m.team1_id = %s OR m.team2_id = %s) AND {season_filter} AND m.status = 'completed'
+            GROUP BY mm.map_name
+        """, (team_id, team_id, team_id, season, season) if season != 'all' else (team_id, team_id, team_id))
+
+        data = cursor.fetchall()
+        if not data: return None, None
+
+        df = pd.DataFrame(data, columns=['map', 'played', 'wins'])
+        df['losses'] = df['played'] - df['wins']
+        df['win_rate'] = (df['wins'] / df['played'] * 100).round(1)
+
+        cursor.execute("SELECT name FROM teams WHERE id = %s", (team_id,))
+        team_name = cursor.fetchone()[0]
+
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        df_melted = df.melt(id_vars='map', value_vars=['wins', 'losses'], var_name='result', value_name='count')
+        sns.barplot(data=df_melted, y='map', x='count', hue='result', palette={'wins': '#3FD1FF', 'losses': '#FF4655'}, ax=ax)
+
+        ax.set_title(f"{season} MAP PERFORMANCE — {team_name}", pad=20, fontweight='bold')
+        ax.set_xlabel("Match Count")
+        ax.set_ylabel("Map")
+        ax.grid(True, axis='x', alpha=0.1)
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        plt.close(fig)
+
+        file = discord.File(buf, filename="map_chart.png")
+        embed = discord.Embed(title=f"🗺️ {team_name}'s Map Statistics", color=discord.Color.blue())
+        embed.set_image(url="attachment://map_chart.png")
+        return file, embed
+
+@bot.tree.command(name="map_analytics", description="View detailed map win rates for a team")
+@app_commands.describe(team="Team name or tag", season="Season ID (e.g. S23, S24, all)")
+async def map_analytics(interaction: discord.Interaction, team: str, season: str = None):
+    await interaction.response.defer()
+    if season is None:
+        season = await run_in_executor(get_default_season)
+
+    try:
+        with get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name FROM teams WHERE name ILIKE %s OR tag ILIKE %s LIMIT 1", (team, team))
+            row = cursor.fetchone()
+            if not row: return await interaction.followup.send(f"❌ Team `{team}` not found.")
+            tid, tname = row
+
+            file, embed = await run_in_executor(generate_team_map_chart, tid, season)
+            if not file:
+                return await interaction.followup.send(f"❌ No map data found for {tname} in {season}.")
+
+            await interaction.followup.send(file=file, embed=embed)
+
+    except Exception as e:
+        print(f"InfoBot: Map Analytics Error - {e}")
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
+@bot.tree.command(name="ask_ai", description="Ask the AI Analyst a question about the tournament")
+@app_commands.describe(question="Your question about the league", season="Season ID (e.g. S23, S24, all)")
+async def ask_ai(interaction: discord.Interaction, question: str, season: str = None):
+    await interaction.response.defer()
+    if season is None:
+        season = await run_in_executor(get_default_season)
     try:
         with get_conn() as conn:
             cursor = conn.cursor()

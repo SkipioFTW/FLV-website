@@ -9,4 +9,8 @@ python-dotenv
 psycopg2-binary
 supabase
 matplotlib
+<<<<<<< Updated upstream
 seaborn
+=======
+seaborn
+>>>>>>> Stashed changes
