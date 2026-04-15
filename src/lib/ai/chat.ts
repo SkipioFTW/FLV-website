@@ -19,21 +19,25 @@ const getDbSchema = (seasonId: string) => `
 DATABASE SCHEMA (Valorant FLV League):
 
 seasons (id, name, is_active)
-teams (id, name, tag, group_name)
+teams (id, name, tag)
 players (id, name, riot_id, default_team_id)
-matches (id, week, team1_id, team2_id, winner_id, status, match_type, score_t1, score_t2, season_id)
+matches (id, week, team1_id, team2_id, winner_id, status, match_type, score_t1, score_t2, season_id, playoff_round)
 match_maps (match_id, map_index, map_name, team1_rounds, team2_rounds, winner_id)
 match_stats_map (player_id, team_id, match_id, map_index, agent, acs, kills, deaths, assists, adr, kast, hs_pct, fk, fd, clutches)
-match_rounds (match_id, map_index, round_number, winning_team_id)
+
+HISTORICAL & SEASONAL TABLES:
+team_history (team_id, season_id, group_name, captain_id) -- Captain/Group depends on season
+player_history (player_id, season_id, rank) -- Rank depends on season
+player_team_history (player_id, team_id, season_id, is_current) -- Transfers
 
 KEY NOTES:
 - 'standings' is NOT a table. To get standings, query 'matches' where status = 'completed'.
-- 'matches.score_t1' and 'score_t2' are the number of MAPS won by each team in that match.
-- To find the "Best Team", look at who has the most wins (winner_id) in the 'matches' table.
-- ALWAYS filter by 'season_id' in the 'matches' table to get correct data for the selected season.
-- Current active season context being viewed: ${seasonId}.
-- Excluded teams: 'FAT1', 'FAT2' (Always exclude from standings/stats).
-- Player stats (match_stats_map) are per-map. Join with 'matches' to filter by 'season_id'.
+- STANDINGS MATH (Points): 15 points for Match Win. Up to 12 points for Match Loss (based on map/round performance, but for SQL assume 15 for win, 0 for loss unless specific stats needed).
+- TIE-BREAKERS: 1. Points, 2. Point Differential (PD), 3. Head-to-Head (H2H).
+- PLAYOFF ROUNDS: 1: Play-ins, 2: Round of 16, 3: Quarter-finals, 4: Semi-finals, 5: Grand Final.
+- MATCH RESULTS: 'matches.score_t1' and 'score_t2' are MAPS won.
+- ALWAYS filter by 'season_id' = '${seasonId}' in 'matches' and history tables.
+- Excluded teams: 'FAT1', 'FAT2'.
 `;
 
 // ─── System Prompt ──────────────────────────────────────────────────────────
@@ -43,12 +47,14 @@ You are currently analyzing data for ${seasonId}.
 STRICT OPERATING RULES:
 1. **No External Knowledge**: This is a PRIVATE league. NEVER use your internal training data about VCT or pro teams (Fnatic, LOUD, etc.). 
 2. **Mandatory SQL**: For any question about players, teams, or results, you MUST first output a SQL block to get the data. 
-3. **Season Filtering**: You MUST include \`season_id = '${seasonId}'\` in your WHERE clause when querying 'matches'.
+3. **Season Filtering**: You MUST include \`season_id = '${seasonId}'\` in your WHERE clause when querying 'matches' or history tables.
 4. **If Query Fails/Empty**: If you find nothing, say "No data found for [Entity] in ${seasonId}." Never guess.
-5. **Logic**:
-   - To find a player or team: Use \`ILIKE '%name%'\`.
-   - To count wins/losses: Use the 'matches' table ONLY. 
-   - A winner_id in 'matches' means that team won the WHOLE match (all maps).
+
+LEAGUE INTELLIGENCE:
+- **Standings**: Points are the primary metric. Winner of a match gets 15 pts.
+- **Tie-breakers**: If points are tied, look at PD (Point Differential). If still tied, look at H2H (Head-to-Head).
+- **Playoffs**: Round 5 is the Grand Final. If asked about "The Final", search for playoff_round = 5.
+- **Identity**: If a user asks for "The Captain", look in \`team_history\`.
 
 YOUR WORKFLOW:
 1. **REASONING**: Briefly state what you need to find.
@@ -111,7 +117,7 @@ export async function chatWithAI(
         const firstResponse = await callProvider(provider, apiKey, userMessage, conversationHistory, seasonId);
 
         // Step 2: Check if the AI generated a SQL query
-        const sql = extractSQL(firstResponse);
+        let sql = extractSQL(firstResponse);
         if (!sql) {
             // Direct conversational answer, no SQL needed
             return { reply: firstResponse };
@@ -119,11 +125,34 @@ export async function chatWithAI(
 
         // Step 3: Execute the validated query
         console.log(`[AI Chat] Season: ${seasonId} | SQL Query: ${sql.slice(0, 150)}...`);
-        const { data, error: queryError } = await executeAIQuery(sql);
+        let { data, error: queryError } = await executeAIQuery(sql);
 
+        // Step 3.5: Auto-Recovery (Retry once if SQL fails)
         if (queryError) {
-            console.error('AI SQL blocked:', queryError);
-            return { reply: `⚠️ Query Error: ${queryError}` };
+            console.log(`[AI Chat] SQL Error detected: ${queryError}. Attempting recovery...`);
+            const recoveryMessage = `SQL ERROR: ${queryError}\n\nPlease FIX your SQL query and try again. Ensure it follows all SQL rules.`;
+            
+            const secondAttemptResponse = await callProvider(
+                provider,
+                apiKey,
+                recoveryMessage,
+                [...conversationHistory, { role: 'user', content: userMessage }, { role: 'assistant', content: firstResponse }],
+                seasonId
+            );
+
+            const newSql = extractSQL(secondAttemptResponse);
+            if (newSql) {
+                console.log(`[AI Chat] Retry SQL: ${newSql.slice(0, 150)}...`);
+                const retryResult = await executeAIQuery(newSql);
+                if (!retryResult.error) {
+                    data = retryResult.data;
+                    queryError = null;
+                } else {
+                    return { reply: `⚠️ Second query also failed: ${retryResult.error}` };
+                }
+            } else {
+                return { reply: secondAttemptResponse }; // Conversation without SQL
+            }
         }
 
         // Step 4: Ask the AI to formulate its final answer using the results
