@@ -1707,7 +1707,7 @@ export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
 
         // 1. Fetch counts in parallel
         const [teamsRes, matchesRes, playersRes] = await Promise.all([
-            supabase.from('teams').select('*', { count: 'exact', head: true }).eq("season_id", getDefaultSeason()),
+            supabase.from('teams').select('*', { count: 'exact', head: true }).eq("season_id", 'S24'),
             matchesQuery,
             supabase.from('players').select('*', { count: 'exact', head: true })
         ]);
