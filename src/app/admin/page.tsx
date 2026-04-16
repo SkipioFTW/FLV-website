@@ -1225,6 +1225,75 @@ function PlayerSearchSelect({
 }
 
 /**
+ * Searchable match combobox
+ */
+function MatchSearchSelect({
+    value,
+    options,
+    onChange,
+}: {
+    value: number;
+    options: { id: number; label: string }[];
+    onChange: (id: number) => void;
+}) {
+    const [query, setQuery] = useState("");
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const selectedLabel = options.find(o => o.id === value)?.label ?? "Select Match";
+    const displayQuery = open ? query : selectedLabel;
+
+    const filtered = query.trim()
+        ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+        : options;
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setOpen(false);
+                setQuery("");
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    return (
+        <div ref={containerRef} className="relative">
+            <input
+                type="text"
+                value={displayQuery}
+                placeholder="Search matches..."
+                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm text-white outline-none focus:border-val-red transition-all"
+                onFocus={() => { setOpen(true); setQuery(""); }}
+                onChange={e => { setQuery(e.target.value); setOpen(true); }}
+            />
+            {open && (
+                <div className="absolute z-50 left-0 top-full mt-1 w-full max-h-60 overflow-y-auto bg-[#1a1a2e] border border-white/10 rounded shadow-2xl backdrop-blur-xl">
+                    <div
+                        className="px-4 py-2 text-xs text-foreground/40 hover:bg-white/10 cursor-pointer border-b border-white/5"
+                        onMouseDown={() => { onChange(0); setOpen(false); setQuery(""); }}
+                    >
+                        — Select Match —
+                    </div>
+                    {filtered.length === 0 ? (
+                        <div className="px-4 py-3 text-xs text-foreground/30 italic">No matches found...</div>
+                    ) : filtered.map(o => (
+                        <div
+                            key={o.id}
+                            className={`px-4 py-2 text-xs cursor-pointer hover:bg-val-red/20 border-b border-white/5 last:border-0 ${o.id === value ? 'text-val-red font-bold bg-val-red/5' : 'text-white'}`}
+                            onMouseDown={() => { onChange(o.id); setOpen(false); setQuery(""); }}
+                        >
+                            {o.label}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
  * Unified Score & Map Editor with Tracker.gg JSON import
  */
 function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
@@ -1519,18 +1588,16 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                             <option value={0} className="bg-background">Playoffs</option>
                             {[1, 2, 3, 4, 5, 6].map(w => <option key={w} value={w} className="bg-background">Week {w}</option>)}
                         </select>
-                        <select
+                        <MatchSearchSelect
                             value={matchId}
-                            onChange={e => setMatchId(parseInt(e.target.value))}
-                            className="bg-white/5 border border-white/10 rounded p-2 text-sm text-white outline-none focus:border-val-red"
-                        >
-                            <option value={0} className="bg-background">Select Match</option>
-                            {allMatches.filter(m => m.week === selectedWeek).map(m => (
-                                <option key={m.id} value={m.id} className="bg-background text-xs">
-                                    ID {m.id}: {m.team1.name} vs {m.team2.name}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={setMatchId}
+                            options={allMatches
+                                .filter(m => selectedWeek === 0 ? m.match_type === 'playoff' : m.week === selectedWeek)
+                                .map(m => ({
+                                    id: m.id,
+                                    label: `ID ${m.id}: ${m.team1.name} vs ${m.team2.name}`
+                                }))}
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
