@@ -51,11 +51,11 @@ async function fetchAll(table: string, columns: string): Promise<any[]> {
 
 // ─── Main Generator ──────────────────────────────────────────────────
 
-export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
+export async function generateLeagueSnapshot(seasonId?: string): Promise<LeagueSnapshot> {
     const [teams, players, matches, matchMaps, statsRaw, roundsRaw] = await Promise.all([
         fetchAll('teams', 'id,name,tag,group_name'),
         fetchAll('players', 'id,name,riot_id,default_team_id'),
-        fetchAll('matches', 'id,week,team1_id,team2_id,winner_id,status,match_type,format,score_t1,score_t2'),
+        fetchAll('matches', 'id,week,team1_id,team2_id,winner_id,status,match_type,format,score_t1,score_t2,season_id'),
         fetchAll('match_maps', 'match_id,map_index,map_name,team1_rounds,team2_rounds,winner_id'),
         fetchAll('match_stats_map', 'player_id,team_id,match_id,map_index,agent,acs,kills,deaths,assists,adr,kast,hs_pct,fk,fd,clutches'),
         fetchAll('match_rounds', 'match_id,map_index,round_number,winning_team_id'),
@@ -65,7 +65,14 @@ export async function generateLeagueSnapshot(): Promise<LeagueSnapshot> {
     const excludeIds = new Set(teams.filter((t: any) => excludeNames.has(t.name)).map((t: any) => t.id));
     const activeTeams = teams.filter((t: any) => !excludeNames.has(t.name));
 
-    const completedMatches = matches.filter((m: any) => m.status === 'completed');
+    const completedMatches = matches.filter((m: any) => {
+        if (m.status !== 'completed') return false;
+        if (seasonId) {
+            if (seasonId === 'S23') return !m.season_id || m.season_id === 'S23';
+            return m.season_id === seasonId;
+        }
+        return true;
+    });
     const completedIds = new Set(completedMatches.map((m: any) => m.id));
     const validMatches = completedMatches.filter(
         (m: any) => !excludeIds.has(m.team1_id) && !excludeIds.has(m.team2_id)

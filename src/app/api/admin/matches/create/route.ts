@@ -16,6 +16,19 @@ function isAuthorized(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json();
+
+  // Inject active season if missing
+  if (!body.season_id) {
+    const { data: activeSeason } = await supabaseServer
+      .from('seasons')
+      .select('id')
+      .eq('is_active', true)
+      .single();
+    if (activeSeason) {
+      body.season_id = activeSeason.id;
+    }
+  }
+
   const { data, error } = await supabaseServer
     .from('matches')
     .insert(body)

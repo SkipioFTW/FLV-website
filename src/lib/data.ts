@@ -391,6 +391,7 @@ export type MatchEntry = {
     playoff_round?: number;
     bracket_pos?: number;
     bracket_label?: string | null;
+    season_id?: string;
 };
 
 export type TeamPerformance = {
@@ -2033,7 +2034,8 @@ export async function createMatch(match: Omit<MatchEntry, 'id' | 'team1' | 'team
                 match_type: match.match_type || (match.group_name === 'Playoffs' ? 'playoff' : 'regular'),
                 playoff_round: match.playoff_round,
                 bracket_pos: match.bracket_pos,
-                bracket_label: match.bracket_label
+                bracket_label: match.bracket_label,
+                season_id: match.season_id // Pass through season_id
             })
         } as any);
         if (!res.ok) throw new Error(await res.text());
@@ -2101,7 +2103,8 @@ export async function bulkCreateMatches(matches: (Omit<MatchEntry, 'id' | 'team1
             match_type: m.match_type || (m.group_name === 'Playoffs' ? 'playoff' : 'regular'),
             playoff_round: m.playoff_round,
             bracket_pos: m.bracket_pos,
-            bracket_label: m.bracket_label
+            bracket_label: m.bracket_label,
+            season_id: m.season_id // Pass through season_id
         }));
         const res = await fetch('/api/admin/matches/bulk', {
             method: 'POST',
@@ -2340,7 +2343,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
     try {
         const { data: m } = await supabase
             .from('matches')
-            .select('id, week, group_name, status, match_type, winner_id, playoff_round, bracket_pos')
+            .select('id, week, group_name, status, match_type, winner_id, playoff_round, bracket_pos, season_id')
             .eq('id', matchId)
             .single();
         if (!m || m.match_type !== 'playoff' || m.status !== 'completed') return;
@@ -2380,7 +2383,8 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                     match_type: 'playoff',
                     playoff_round: 2,
                     bracket_pos: pos,
-                    bracket_label: `R2 #${pos}`
+                    bracket_label: `R2 #${pos}`,
+                    season_id: m.season_id // Explicitly preserve season
                 } as any);
             }
         } else {
@@ -2428,7 +2432,8 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                         match_type: 'playoff',
                         playoff_round: nextRound,
                         bracket_pos: targetPos,
-                        bracket_label: `R${nextRound} #${targetPos}`
+                        bracket_label: `R${nextRound} #${targetPos}`,
+                        season_id: m.season_id // Explicitly preserve season
                     } as any);
                 }
             }
@@ -2450,11 +2455,12 @@ export type BracketAction = {
     reason: string;
 };
 
-export async function computeBracketAdvancements(): Promise<BracketAction[]> {
+export async function computeBracketAdvancements(seasonId?: string): Promise<BracketAction[]> {
     const actions: BracketAction[] = [];
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
         const [{ data: matches }, { data: teams }, { data: maps }] = await Promise.all([
-            supabase.from('matches').select('*').eq('match_type', 'playoff'),
+            supabase.from('matches').select('*').eq('match_type', 'playoff').eq('season_id', activeSeason),
             supabase.from('teams').select('id,name,tag'),
             supabase.from('match_maps').select('match_id, team1_rounds, team2_rounds')
         ]);
@@ -2615,13 +2621,31 @@ export async function clearMatchDetails(matchId: number): Promise<boolean> {
 /**
  * Basic team list for admin dropdowns
  */
-export async function getTeamsBasic(): Promise<{ id: number, name: string, tag: string, group_name: string }[]> {
+export async function getTeamsBasic(seasonId?: string): Promise<{ id: number, name: string, tag: string, group_name: string }[]> {
     try {
-        const { data, error } = await supabase
+        const activeSeason = seasonId || await getDefaultSeason();
+        const isAllTime = activeSeason === 'all';
+
+        let query = supabase
             .from('teams')
             .select('id, name, tag, group_name')
             .order('name');
 
+        if (!isAllTime) {
+            const { data: history } = await supabase
+                .from('team_history')
+                .select('team_id')
+                .eq('season_id', activeSeason);
+
+            const teamIds = (history || []).map(h => h.team_id);
+            if (teamIds.length > 0) {
+                query = query.in('id', teamIds);
+            } else if (activeSeason !== 'S23') {
+                return [];
+            }
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
         return data || [];
     } catch (error) {
@@ -2633,12 +2657,23 @@ export async function getTeamsBasic(): Promise<{ id: number, name: string, tag: 
 /**
  * Get count of remaining (scheduled) matches for each team
  */
-export async function getRemainingMatchesCounts(): Promise<Map<number, number>> {
+export async function getRemainingMatchesCounts(seasonId?: string): Promise<Map<number, number>> {
     try {
-        const { data: matches, error } = await supabase
+        const activeSeason = seasonId || await getDefaultSeason();
+        
+        // Build base query
+        let query = supabase
             .from('matches')
             .select('team1_id, team2_id')
             .eq('status', 'scheduled');
+
+        // Apply season filter if not ALL TIME
+        if (activeSeason !== 'all') {
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            query = query.or(seasonFilter);
+        }
+            
+        const { data: matches, error } = await query;
 
         if (error) throw error;
         const counts = new Map<number, number>();
@@ -2688,13 +2723,25 @@ export async function annotateElimination(standings: StandingsRow[]): Promise<(S
 /**
  * Get dashboard stats for the admin panel
  */
-export async function getDashboardStats(): Promise<GlobalStats> {
+export async function getDashboardStats(seasonId?: string): Promise<GlobalStats> {
     try {
+        const activeSeason = seasonId || await getDefaultSeason();
+        const isAllTime = activeSeason === 'all';
+        const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
         const fiveMinsAgo = Math.floor(Date.now() / 1000) - 300;
 
+        let teamsQuery: any = supabase.from('teams').select('id', { count: 'exact', head: true });
+        let matchesQuery: any = supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'completed');
+        
+        if (!isAllTime) {
+            // Count teams from history
+            teamsQuery = supabase.from('team_history').select('team_id', { count: 'exact', head: true }).eq('season_id', activeSeason);
+            matchesQuery = matchesQuery.or(seasonFilter);
+        }
+
         const [teamsRes, matchesRes, activityRes] = await Promise.all([
-            supabase.from('teams').select('id', { count: 'exact', head: true }),
-            supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
+            teamsQuery,
+            matchesQuery,
             supabase.from('session_activity').select('ip_address', { count: 'exact', head: true }).gt('last_activity', fiveMinsAgo)
         ]);
 

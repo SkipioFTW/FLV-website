@@ -13,6 +13,7 @@ import {
     saveMapResults,
     parseTrackerJson,
     getDashboardStats,
+    getSeasons,
     type GlobalStats
 } from "@/lib/data";
 import { clearMatchDetails } from "@/lib/data";
@@ -27,6 +28,8 @@ export default function AdminPage() {
     const [playoffMatches, setPlayoffMatches] = useState<PlayoffMatch[]>([]);
     const [teams, setTeams] = useState<{ id: number, name: string, tag: string, group_name: string }[]>([]);
     const [stats, setStats] = useState<GlobalStats>({ activeTeams: 0, matchesPlayed: 0, livePlayers: 0, totalPoints: 0 });
+    const [selectedSeason, setSelectedSeason] = useState<string>('S24');
+    const [availableSeasons, setAvailableSeasons] = useState<{ id: string, name: string, is_active: boolean }[]>([]);
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);
     const [authLoading, setAuthLoading] = useState(true);
@@ -41,6 +44,11 @@ export default function AdminPage() {
                 setAuthLoading(false);
             })
             .catch(() => setAuthLoading(false));
+
+        const savedSeason = window.localStorage.getItem('admin_selected_season');
+        if (savedSeason) {
+            setSelectedSeason(savedSeason);
+        }
     }, []);
 
     useEffect(() => {
@@ -50,22 +58,28 @@ export default function AdminPage() {
                 return;
             }
             setLoading(true);
-            const [p, m, t, pm, s] = await Promise.all([
+            const [p, m, t, pm, s, loadedSeasons] = await Promise.all([
                 getPendingRequests(),
-                getAllMatches(),
-                getTeamsBasic(),
-                getPlayoffMatches(),
-                getDashboardStats()
+                getAllMatches(selectedSeason),
+                getTeamsBasic(selectedSeason),
+                getPlayoffMatches(selectedSeason),
+                getDashboardStats(selectedSeason),
+                getSeasons()
             ]);
             setPending(p);
             setMatches(m);
             setTeams(t);
             setPlayoffMatches(pm);
             setStats(s);
+            setAvailableSeasons(loadedSeasons);
+            if (!window.localStorage.getItem('admin_selected_season')) {
+                const act = loadedSeasons.find(x => x.is_active);
+                if (act) setSelectedSeason(act.id);
+            }
             setLoading(false);
         };
         loadData();
-    }, [authorized]);
+    }, [authorized, selectedSeason]);
 
     const handleUpdatePending = async (type: 'match' | 'player', id: number, status: string) => {
         const success = await updatePendingRequestStatus(type, id, status);
@@ -158,8 +172,24 @@ export default function AdminPage() {
                             Control Center & Tournament Management
                         </p>
                     </div>
-
-                    <div className="flex glass p-1 rounded-lg">
+                    <div className="flex items-center gap-4">
+                        <select
+                            value={selectedSeason}
+                            onChange={(e) => {
+                                const newSeason = e.target.value;
+                                setSelectedSeason(newSeason);
+                                window.localStorage.setItem('admin_selected_season', newSeason);
+                            }}
+                            className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm font-black uppercase tracking-widest text-val-blue outline-none cursor-pointer hover:bg-white/10 focus:border-val-blue transition-colors appearance-none"
+                            style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233fd1ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em', paddingRight: '2.5rem' }}
+                        >
+                            {availableSeasons.map(s => (
+                                <option key={s.id} value={s.id} className="bg-background text-white">
+                                    {s.name} {s.is_active ? '(Active)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="flex glass p-1 rounded-lg">
                         {(['pending', 'schedule', 'playoffs', 'editor', 'players', 'snapshot'] as const).map((tab) => (
                             <button
                                 key={tab}
@@ -177,6 +207,7 @@ export default function AdminPage() {
                                 )}
                             </button>
                         ))}
+                        </div>
                     </div>
                 </header>
                 <section className="grid md:grid-cols-4 gap-6 mb-8">
@@ -338,8 +369,8 @@ export default function AdminPage() {
                         )}
 
                         {activeTab === 'schedule' && (
-                            <ScheduleManager teams={teams} onUpdate={() => {
-                                getAllMatches().then(setMatches);
+                            <ScheduleManager teams={teams} selectedSeason={selectedSeason} onUpdate={() => {
+                                getAllMatches(selectedSeason).then(setMatches);
                             }} />
                         )}
 
@@ -347,21 +378,22 @@ export default function AdminPage() {
                             <PlayoffBracketEditor
                                 teams={teams}
                                 matches={playoffMatches}
+                                selectedSeason={selectedSeason}
                                 onUpdate={async () => {
-                                    const pm = await getPlayoffMatches();
+                                    const pm = await getPlayoffMatches(selectedSeason);
                                     setPlayoffMatches(pm);
                                 }}
                             />
                         )}
 
                         {activeTab === 'editor' && (
-                            <ScoreMapEditor />
+                            <ScoreMapEditor selectedSeason={selectedSeason} />
                         )}
                         {activeTab === 'players' && (
-                            <PlayersAdmin />
+                            <PlayersAdmin selectedSeason={selectedSeason} />
                         )}
                         {activeTab === 'snapshot' && (
-                            <SnapshotManager />
+                            <SnapshotManager selectedSeason={selectedSeason} />
                         )}
                     </div>
                 )}
@@ -374,12 +406,19 @@ export default function AdminPage() {
  */
 function ScheduleManager({
     teams,
+    selectedSeason,
     onUpdate
 }: {
     teams: { id: number, name: string, tag: string, group_name: string }[],
+    selectedSeason: string,
     onUpdate: () => void
 }) {
     const [bulkText, setBulkText] = useState("");
+    const [bulkWeek, setBulkWeek] = useState(1);
+    const [bulkFormat, setBulkFormat] = useState<'BO1' | 'BO3' | 'BO5'>('BO1');
+    const [parsedMatches, setParsedMatches] = useState<any[]>([]);
+    const [parsedErrors, setParsedErrors] = useState<string[]>([]);
+    
     const [week, setWeek] = useState(1);
     const [group, setGroup] = useState("");
     const [format, setFormat] = useState<'BO1' | 'BO3' | 'BO5'>('BO1');
@@ -392,47 +431,80 @@ function ScheduleManager({
 
     const loadScheduled = async () => {
         const { getAllMatches } = await import("@/lib/data");
-        const all = await getAllMatches();
+        const all = await getAllMatches(selectedSeason);
         setScheduledMatches(all.filter(m => m.status === 'scheduled'));
     };
 
-    useEffect(() => { loadScheduled(); }, []);
+    useEffect(() => { loadScheduled(); }, [selectedSeason]);
 
-    const handleBulkAdd = async () => {
+    const handlePreviewBulk = () => {
         if (!bulkText.trim()) return;
+        setStatus(null);
+        const lines = bulkText.split('\n').filter(l => l.trim().length > 0);
+        const validMatches: any[] = [];
+        const errors: string[] = [];
+
+        lines.forEach((line, idx) => {
+            if (!line.toLowerCase().includes('vs')) {
+                errors.push(`Line ${idx + 1}: Missing "vs" separator.`);
+                return;
+            }
+            const [ta, tb] = line.split(/vs/i).map(s => s.trim());
+            const teamA = teams.find(t => t.name.toLowerCase() === ta.toLowerCase() || t.tag.toLowerCase() === ta.toLowerCase());
+            const teamB = teams.find(t => t.name.toLowerCase() === tb.toLowerCase() || t.tag.toLowerCase() === tb.toLowerCase());
+            
+            if (!teamA) {
+                errors.push(`Line ${idx + 1}: Could not find Team A "${ta}".`);
+                return;
+            }
+            if (!teamB) {
+                errors.push(`Line ${idx + 1}: Could not find Team B "${tb}".`);
+                return;
+            }
+
+            validMatches.push({
+                week: bulkWeek,
+                group_name: teamA.group_name || teamB.group_name || 'N/A',
+                team1_id: teamA.id,
+                team2_id: teamB.id,
+                status: 'scheduled' as const,
+                format: bulkFormat,
+                maps_played: 0,
+                winner_id: null,
+                season_id: selectedSeason,
+                _teamA_name: teamA.name,
+                _teamB_name: teamB.name
+            });
+        });
+
+        setParsedMatches(validMatches);
+        setParsedErrors(errors);
+        if (validMatches.length > 0) {
+            setStatus(null);
+        } else {
+            setStatus("No valid matches found to preview.");
+        }
+    };
+
+    const handleConfirmBulk = async () => {
+        if (parsedMatches.length === 0) return;
         setProcessing(true);
         setStatus(null);
         try {
-            const lines = bulkText.split('\n').filter(l => l.includes('vs'));
-            const matchesToCreate = lines.map(line => {
-                const [ta, tb] = line.split(/vs/i).map(s => s.trim());
-                const teamA = teams.find(t => t.name.toLowerCase() === ta.toLowerCase() || t.tag.toLowerCase() === ta.toLowerCase());
-                const teamB = teams.find(t => t.name.toLowerCase() === tb.toLowerCase() || t.tag.toLowerCase() === tb.toLowerCase());
-                if (!teamA || !teamB) return null;
-                return {
-                    week,
-                    group_name: group || teamA.group_name,
-                    team1_id: teamA.id,
-                    team2_id: teamB.id,
-                    status: 'scheduled' as const,
-                    format,
-                    maps_played: 0,
-                    winner_id: null
-                };
-            }).filter(Boolean) as any[];
-
-            if (matchesToCreate.length > 0) {
-                const { bulkCreateMatches } = await import("@/lib/data");
-                await bulkCreateMatches(matchesToCreate);
-                setBulkText("");
-                setStatus(`✓ Added ${matchesToCreate.length} matches!`);
-                onUpdate();
-                await loadScheduled();
-            } else {
-                setStatus("No valid matches found. Format: 'Team A vs Team B'");
-            }
+            const matchesToCreate = parsedMatches.map(m => {
+                const { _teamA_name, _teamB_name, ...rest } = m;
+                return rest;
+            });
+            const { bulkCreateMatches } = await import("@/lib/data");
+            await bulkCreateMatches(matchesToCreate);
+            setBulkText("");
+            setParsedMatches([]);
+            setParsedErrors([]);
+            setStatus(`✓ Successfully saved ${matchesToCreate.length} matches!`);
+            onUpdate();
+            await loadScheduled();
         } catch {
-            setStatus("Error adding matches");
+            setStatus("Error saving bulk matches.");
         } finally {
             setProcessing(false);
         }
@@ -531,7 +603,8 @@ function ScheduleManager({
                                         status: 'scheduled',
                                         format,
                                         maps_played: 0,
-                                        winner_id: null
+                                        winner_id: null,
+                                        season_id: selectedSeason
                                     });
                                     setStatus("✓ Match added!");
                                     setT1Id(0);
@@ -551,14 +624,34 @@ function ScheduleManager({
                     </div>
                 </div>
 
-                {/* Bulk Add */}
                 <div className="glass p-8 space-y-6">
                     <div className="flex justify-between items-center">
                         <h3 className="font-display text-xl font-black text-val-blue uppercase italic">Bulk Add Matches</h3>
                         <span className="text-[10px] font-black text-foreground/20 uppercase tracking-widest">Parser Mode</span>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Target Week</label>
+                            <input
+                                type="number"
+                                value={bulkWeek}
+                                onChange={e => setBulkWeek(parseInt(e.target.value))}
+                                className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Target Format</label>
+                            <select value={bulkFormat} onChange={e => setBulkFormat(e.target.value as any)} className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none">
+                                <option value="BO1" className="bg-background">BO1</option>
+                                <option value="BO3" className="bg-background">BO3</option>
+                                <option value="BO5" className="bg-background">BO5</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <p className="text-[10px] text-foreground/40 font-bold uppercase tracking-widest leading-relaxed">
-                        Paste matches below. Format: <span className="text-val-blue">TEAM Name vs OTHER Team</span>. One per line.
+                        Paste match lines below. Format: <span className="text-val-blue">TEAM Name vs OTHER Team</span>.
                     </p>
                     <textarea
                         value={bulkText}
@@ -566,13 +659,54 @@ function ScheduleManager({
                         placeholder={"Team A vs Team B\nTeam C vs Team D"}
                         className="w-full h-40 bg-white/5 border border-white/10 rounded p-4 text-sm font-mono focus:border-val-blue outline-none transition-colors resize-none"
                     />
-                    <button
-                        disabled={!bulkText.trim() || processing}
-                        onClick={handleBulkAdd}
-                        className="w-full py-3 bg-val-blue text-white font-display font-black uppercase tracking-widest text-xs rounded shadow-[0_0_20px_rgba(63,209,255,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100"
-                    >
-                        {processing ? "Parsing & Saving..." : "Bulk Save Schedule"}
-                    </button>
+                    
+                    {parsedMatches.length === 0 && parsedErrors.length === 0 ? (
+                        <button
+                            disabled={!bulkText.trim() || processing}
+                            onClick={handlePreviewBulk}
+                            className="w-full py-3 bg-val-blue text-white font-display font-black uppercase tracking-widest text-xs rounded shadow-[0_0_20px_rgba(63,209,255,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100"
+                        >
+                            Preview Matches
+                        </button>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="grid md:grid-cols-2 gap-4">
+                                {parsedMatches.length > 0 && (
+                                    <div className="p-4 bg-green-500/10 border border-green-500/20 rounded">
+                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-green-400 mb-2">Valid Matches ({parsedMatches.length})</h4>
+                                        <ul className="text-xs space-y-1 text-green-100 opacity-80 h-32 overflow-y-auto">
+                                            {parsedMatches.map((m, i) => <li key={i}>{m._teamA_name} vs {m._teamB_name}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                                {parsedErrors.length > 0 && (
+                                    <div className="p-4 bg-val-red/10 border border-val-red/20 rounded">
+                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-val-red mb-2">Errors ({parsedErrors.length})</h4>
+                                        <ul className="text-xs space-y-1 text-red-100 opacity-80 h-32 overflow-y-auto">
+                                            {parsedErrors.map((e, i) => <li key={i}>{e}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => { setParsedMatches([]); setParsedErrors([]); }}
+                                    className="flex-1 py-3 bg-white/5 border border-white/10 hover:bg-white/10 font-display font-black uppercase tracking-widest text-xs rounded transition-all"
+                                >
+                                    Edit Text
+                                </button>
+                                <button
+                                    disabled={parsedMatches.length === 0 || processing}
+                                    onClick={handleConfirmBulk}
+                                    className="flex-1 py-3 bg-val-blue text-white font-display font-black uppercase tracking-widest text-xs rounded shadow-[0_0_20px_rgba(63,209,255,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100"
+                                >
+                                    {processing ? "Saving..." : `Save ${parsedMatches.length} Matches`}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {status && (
                         <div className={`text-xs font-bold uppercase tracking-widest ${status.startsWith('✓') ? 'text-val-blue' : 'text-val-red'}`}>{status}</div>
                     )}
@@ -650,10 +784,12 @@ function ScheduleManager({
 function PlayoffBracketEditor({
     teams,
     matches,
+    selectedSeason,
     onUpdate
 }: {
     teams: { id: number, name: string, tag: string, group_name: string }[],
     matches: PlayoffMatch[],
+    selectedSeason: string,
     onUpdate: () => void
 }) {
     const [saving, setSaving] = useState(false);
@@ -945,7 +1081,7 @@ function PlayoffBracketEditor({
                         <button
                             onClick={async () => {
                                 const { computeBracketAdvancements } = await import('@/lib/data');
-                                const acts = await computeBracketAdvancements();
+                                const acts = await computeBracketAdvancements(selectedSeason);
                                 setProposals(acts);
                             }}
                             className="px-4 py-2 bg-white/10 text-foreground rounded text-xs font-black uppercase tracking-widest"
@@ -1091,11 +1227,12 @@ function PlayerSearchSelect({
 /**
  * Unified Score & Map Editor with Tracker.gg JSON import
  */
-function ScoreMapEditor() {
+function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
     const [matchId, setMatchId] = useState<number>(0);
     const [selectedWeek, setSelectedWeek] = useState<number>(1);
     const [format, setFormat] = useState<'BO1' | 'BO3' | 'BO5'>('BO3');
     const [forfeit, setForfeit] = useState(false);
+    const [forfeitWinnerId, setForfeitWinnerId] = useState<number>(0);
     const [jsonText, setJsonText] = useState("");
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
@@ -1117,7 +1254,7 @@ function ScoreMapEditor() {
 
     useEffect(() => {
         import("@/lib/data").then(({ getAllMatches }) => {
-            getAllMatches().then(ms => setAllMatchesState(ms));
+            getAllMatches(selectedSeason).then(ms => setAllMatchesState(ms));
         });
         supabase.from('players').select('id, name, riot_id, default_team_id').then(({ data }) => {
             setAllPlayers((data as any[]) || []);
@@ -1296,15 +1433,19 @@ function ScoreMapEditor() {
 
     const saveForfeitMatch = async () => {
         if (!matchId) return;
+        if (!forfeitWinnerId) {
+            setStatus("Please select a winner for the forfeit");
+            return;
+        }
         setSaving(true);
         try {
             await clearMatchDetails(matchId);
             const sel = allMatches.find(m => m.id === matchId);
-            const s1 = forfeit ? 13 : 0;
-            const s2 = forfeit ? 0 : 13;
-            const winner_id = s1 > s2 ? sel?.team1.id : sel?.team2.id;
-            await updateMatch(matchId, { score_t1: s1, score_t2: s2, winner_id, status: 'completed', format, maps_played: 0, is_forfeit: true as any });
-            setStatus("Saved");
+            const s1 = forfeitWinnerId === sel?.team1.id ? 13 : 0;
+            const s2 = forfeitWinnerId === sel?.team2.id ? 13 : 0;
+            await updateMatch(matchId, { score_t1: s1, score_t2: s2, winner_id: forfeitWinnerId, status: 'completed', format, maps_played: 0, is_forfeit: true as any });
+            setStatus("Saved forfeit match successfully");
+            setMatchId(0);
         } catch {
             setStatus("Error");
         } finally {
@@ -1404,11 +1545,26 @@ function ScoreMapEditor() {
                                 <option value="BO5" className="bg-background">BO5</option>
                             </select>
                         </div>
-                        <div className="flex items-end pb-2">
+                        <div className="flex flex-col justify-end pb-2 gap-2">
                             <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/60 cursor-pointer">
                                 <input type="checkbox" checked={forfeit} onChange={e => setForfeit(e.target.checked)} className="accent-val-red" />
                                 Match Forfeit
                             </label>
+                            {forfeit && (
+                                <select 
+                                    value={forfeitWinnerId}
+                                    onChange={e => setForfeitWinnerId(parseInt(e.target.value))}
+                                    className="w-full bg-white/5 border border-white/10 rounded p-1 text-xs text-val-red outline-none focus:border-val-red"
+                                >
+                                    <option value={0} className="bg-background">Select Winner...</option>
+                                    <option value={allMatches.find(m => m.id === matchId)?.team1.id} className="bg-background text-white">
+                                        {allMatches.find(m => m.id === matchId)?.team1.name}
+                                    </option>
+                                    <option value={allMatches.find(m => m.id === matchId)?.team2.id} className="bg-background text-white">
+                                        {allMatches.find(m => m.id === matchId)?.team2.name}
+                                    </option>
+                                </select>
+                            )}
                         </div>
                     </div>
                     <div>
@@ -1602,7 +1758,7 @@ function ScoreMapEditor() {
 /**
  * Players Admin: add/edit players and assign permanent subs
  */
-function PlayersAdmin() {
+function PlayersAdmin({ selectedSeason }: { selectedSeason: string }) {
     const [players, setPlayers] = useState<Array<{ id: number; name: string; riot_id: string; uuid?: string; rank?: string; tracker_link?: string; default_team_id?: number | null }>>([]);
     const [teams, setTeams] = useState<Array<{ id: number; name: string }>>([]);
     const [filter, setFilter] = useState("");
@@ -1610,12 +1766,19 @@ function PlayersAdmin() {
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        supabase.from('teams').select('id, name').order('name').then(({ data }) => setTeams((data as any[]) || []));
-        supabase.from('players').select('id, name, riot_id, uuid, rank, tracker_link, default_team_id').order('name').then(({ data }) => setPlayers((data as any[]) || []));
-    }, []);
+        import("@/lib/data").then(({ getTeamsBasic, getPlayers }) => {
+            getTeamsBasic(selectedSeason).then(data => setTeams(data as any[]));
+            getPlayers(selectedSeason).then(data => {
+                // getPlayers currently returns a smaller set, if we need full data we do another fetch or use players from db directly
+                // but usually players exist globally, maybe just filter
+                refresh();
+            });
+        });
+    }, [selectedSeason]);
 
     const refresh = async () => {
-        const { data } = await supabase.from('players').select('id, name, riot_id, rank, default_team_id').order('name');
+        const { data } = await supabase.from('players').select('id, name, riot_id, rank, default_team_id, uuid, tracker_link').order('name');
+        // Let's just fetch all players for player management since players can be added globally.
         setPlayers((data as any[]) || []);
     };
 
@@ -1746,10 +1909,9 @@ function PlayersAdmin() {
 }
 
 /**
- * Snapshot Manager Component
- * Allows admins to generate the JSON snapshot for the AI Analyst
+ * AI Snapshot Manager
  */
-function SnapshotManager() {
+function SnapshotManager({ selectedSeason }: { selectedSeason: string }) {
     const [status, setStatus] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -1758,7 +1920,7 @@ function SnapshotManager() {
     const loadSnapshot = async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/admin/snapshot/generate');
+            const res = await fetch(`/api/admin/snapshot/generate?season_id=${selectedSeason}`);
             const data = await res.json();
             setStatus(data.snapshot);
             setError(null);
@@ -1774,7 +1936,7 @@ function SnapshotManager() {
         setGenerating(true);
         setError(null);
         try {
-            const res = await fetch('/api/admin/snapshot/generate', { method: 'POST' });
+            const res = await fetch(`/api/admin/snapshot/generate?season_id=${selectedSeason}`, { method: 'POST' });
             const data = await res.json();
             if (data.ok) {
                 await loadSnapshot();

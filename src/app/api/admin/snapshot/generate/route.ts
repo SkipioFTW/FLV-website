@@ -17,8 +17,11 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+        const url = new URL(req.url);
+        const seasonId = url.searchParams.get('season_id') || undefined;
+
         // 1. Generate the snapshot
-        const snapshot = await generateLeagueSnapshot();
+        const snapshot = await generateLeagueSnapshot(seasonId);
 
         // 2. Deactivate all existing snapshots
         const { error: deactivateErr } = await supabaseServer
