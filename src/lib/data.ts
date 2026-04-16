@@ -1699,20 +1699,31 @@ export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
 
+        // 1. Initialize queries
+        let teamsQuery = supabase.from('teams').select('*', { count: 'exact', head: true });
         let matchesQuery = supabase.from('matches').select('*', { count: 'exact', head: true }).eq('status', 'completed');
+
+        // Players remains unfiltered (global count)
+        const playersQuery = supabase.from('players').select('*', { count: 'exact', head: true });
+
+        // 2. Apply season filtering logic only if it's not "all time"
         if (!isAllTime) {
-            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            const seasonFilter = activeSeason === 'S23'
+                ? 'season_id.eq.S23,season_id.is.null'
+                : `season_id.eq.${activeSeason}`;
+
+            teamsQuery = teamsQuery.or(seasonFilter);
             matchesQuery = matchesQuery.or(seasonFilter);
         }
 
-        // 1. Fetch counts in parallel
+        // 3. Fetch counts in parallel
         const [teamsRes, matchesRes, playersRes] = await Promise.all([
-            supabase.from('teams').select('*', { count: 'exact', head: true }).eq("season_id", 'S24'),
+            teamsQuery,
             matchesQuery,
-            supabase.from('players').select('*', { count: 'exact', head: true })
+            playersQuery
         ]);
 
-        // 2. Fetch standings to calculate total points
+        // 4. Fetch standings to calculate total points
         const standings = await getStandings(activeSeason);
         let totalPoints = 0;
         standings.forEach(group => {
@@ -1724,7 +1735,7 @@ export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
         return {
             activeTeams: teamsRes.count || 0,
             matchesPlayed: matchesRes.count || 0,
-            livePlayers: playersRes.count || 0,
+            livePlayers: playersRes.count || 0, // This will be the global count
             totalPoints: totalPoints
         };
     } catch (error) {
