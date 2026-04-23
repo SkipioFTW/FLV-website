@@ -323,6 +323,21 @@ export function parseTrackerJson(
         });
 
         // 4. Extract Per-Round Player Data
+        // Build a weapon lookup: {rid}_{roundNum} -> weaponName (from first kill in that round)
+        const playerRoundKills = segments.filter(s => s?.type === "player-round-kills");
+        const weaponMap = new Map<string, string>();
+        playerRoundKills.forEach(prk => {
+            const killerRid = lower(prk?.metadata?.platformInfo?.platformUserIdentifier);
+            const rNum = Number(prk?.attributes?.round ?? 0);
+            const weaponName: string | null = prk?.metadata?.weaponName || null;
+            if (killerRid && rNum && weaponName) {
+                const key = `${killerRid}_${rNum}`;
+                if (!weaponMap.has(key)) {
+                    weaponMap.set(key, weaponName);
+                }
+            }
+        });
+
         playerRounds.forEach(pr => {
             const rid = lower(pr?.attributes?.platformUserIdentifier);
             if (!rid) return;
@@ -330,18 +345,18 @@ export function parseTrackerJson(
             const kills = Number(pr?.stats?.kills?.value ?? 0);
             const damage = Number(pr?.stats?.damage?.value ?? 0);
             const spent = Number(pr?.stats?.spentCredits?.value ?? 0);
-
-            // Find weapon for this round if possible (usually in player-round-weapon or similar)
-            // For now, we'll leave weapon as null or attempt to find first kill weapon
+            // Only set weapon if the player had a kill this round (weapon is the one they used to kill)
+            const weapon = kills > 0 ? (weaponMap.get(`${rid}_${rNum}`) ?? null) : null;
             playerRoundsArr.push({
                 rid,
                 round_number: rNum,
                 kills,
                 damage,
                 spent,
-                weapon: null
+                weapon
             });
         });
+
 
         let map_name = lower(data?.metadata?.mapName || data?.metadata?.map || "");
         if (!map_name) {
@@ -2294,7 +2309,8 @@ export async function saveMapResults(
         t1_rounds: number,
         t2_rounds: number,
         winner_id: number | null,
-        is_forfeit: boolean
+        is_forfeit: boolean,
+        tracker_id?: string
     },
     playerStats: {
         team_id: number,
@@ -2312,7 +2328,14 @@ export async function saveMapResults(
         fk?: number,
         fd?: number,
         mk?: number,
-        dd_delta?: number
+        dd_delta?: number,
+        plants?: number,
+        defuses?: number,
+        survived?: number,
+        traded?: number,
+        clutches?: number,
+        clutches_details?: { v1: number, v2: number, v3: number, v4: number, v5: number },
+        ability_casts?: { grenade: number, ability1: number, ability2: number, ultimate: number }
     }[],
     meta?: { pendingId?: number, url?: string },
     rounds?: any[],

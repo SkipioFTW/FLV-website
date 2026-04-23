@@ -110,13 +110,20 @@ export async function POST(req: NextRequest) {
   }
   const [{ data: allMaps }, { data: matchInfo }] = await Promise.all([
     supabaseServer.from('match_maps').select('winner_id').eq('match_id', matchId),
-    supabaseServer.from('matches').select('team1_id, team2_id, week, playoff_round, bracket_pos, match_type').eq('id', matchId).single(),
+    supabaseServer.from('matches').select('team1_id, team2_id, week, playoff_round, bracket_pos, match_type, tracker_ids').eq('id', matchId).single(),
   ]);
   if (allMaps && matchInfo) {
     const t1Wins = allMaps.filter((m: any) => m.winner_id === matchInfo.team1_id).length;
     const t2Wins = allMaps.filter((m: any) => m.winner_id === matchInfo.team2_id).length;
     const finalWinner = t1Wins > t2Wins ? matchInfo.team1_id : t2Wins > t1Wins ? matchInfo.team2_id : null;
     const payload: any = { score_t1: t1Wins, score_t2: t2Wins, maps_played: allMaps.length, winner_id: finalWinner, status: 'completed' };
+    
+    if (mapData.tracker_id) {
+        const tIds = matchInfo.tracker_ids || [];
+        while (tIds.length <= mapData.index) tIds.push(null);
+        tIds[mapData.index] = mapData.tracker_id;
+        payload.tracker_ids = tIds;
+    }
     if (meta?.pendingId) {
       const { data: pend } = await supabaseServer.from('pending_matches').select('channel_id, submitter_id').eq('id', meta.pendingId).single();
       payload.reported = true;

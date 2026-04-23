@@ -1314,8 +1314,8 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
     const [t1Rounds, setT1Rounds] = useState(0);
     const [t2Rounds, setT2Rounds] = useState(0);
     const [winnerId, setWinnerId] = useState<number | null>(null);
-    const [team1Rows, setTeam1Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
-    const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; conf: string }>>([]);
+    const [team1Rows, setTeam1Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; plants?: number; defuses?: number; survived?: number; traded?: number; clutches?: number; clutches_details?: any; ability_casts?: any; conf: string }>>([]);
+    const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; plants?: number; defuses?: number; survived?: number; traded?: number; clutches?: number; clutches_details?: any; ability_casts?: any; conf: string }>>([]); 
     const [mapRoundsData, setMapRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
     const [mapForfeit, setMapForfeit] = useState(false);
@@ -1446,6 +1446,13 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                         fd: m.s.fd,
                         mk: m.s.mk,
                         dd_delta: m.s.dd_delta,
+                        plants: m.s.plants,
+                        defuses: m.s.defuses,
+                        survived: m.s.survived,
+                        traded: m.s.traded,
+                        clutches: m.s.clutches,
+                        clutches_details: m.s.clutches_details,
+                        ability_casts: m.s.ability_casts,
                         conf: m.s.conf || "-"
                     });
                 });
@@ -1469,6 +1476,13 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                         fd: m.s.fd,
                         mk: m.s.mk,
                         dd_delta: m.s.dd_delta,
+                        plants: m.s.plants,
+                        defuses: m.s.defuses,
+                        survived: m.s.survived,
+                        traded: m.s.traded,
+                        clutches: m.s.clutches,
+                        clutches_details: m.s.clutches_details,
+                        ability_casts: m.s.ability_casts,
                         conf: m.s.conf || "-"
                     });
                 });
@@ -1533,13 +1547,23 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                 ...team2Rows.map(r => ({ team_id: sel?.team2.id as number, ...r })),
             ].filter(r => r.player_id);
 
+            let tracker_id: string | undefined = undefined;
+            if (ghId) {
+                const links = ghId.split(/[\n\s,]+/).filter(l => l.trim().length > 0);
+                if (links.length > 0) {
+                    const targetLink = links[mapIndex] || links[0];
+                    tracker_id = targetLink.includes("tracker.gg") ? targetLink.match(/match\/([A-Za-z0-9\-]+)/)?.[1] || targetLink : targetLink.replace(/[^A-Za-z0-9\-]/g, "");
+                }
+            }
+
             await saveMapResults(matchId, {
                 index: mapIndex,
                 name: mapName,
                 t1_rounds: t1Rounds,
                 t2_rounds: t2Rounds,
                 winner_id: winnerId,
-                is_forfeit: mapForfeit
+                is_forfeit: mapForfeit,
+                tracker_id
             }, payloadRows.map(r => ({
                 team_id: r.team_id,
                 player_id: r.player_id as number,
@@ -1556,7 +1580,14 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                 fk: r.fk,
                 fd: r.fd,
                 mk: r.mk,
-                dd_delta: r.dd_delta
+                dd_delta: r.dd_delta,
+                plants: r.plants,
+                defuses: r.defuses,
+                survived: r.survived,
+                traded: r.traded,
+                clutches: r.clutches,
+                clutches_details: r.clutches_details,
+                ability_casts: r.ability_casts
             })), {
                 pendingId: pendingId || undefined,
                 url: window.localStorage.getItem('auto_selected_match_url') || undefined
