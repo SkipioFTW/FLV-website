@@ -2,6 +2,13 @@
 
 Follow these steps to get your Valorant Tournament bot running on your local machine.
 
+## Features
+- **Premium AI Integration**: Thread-based conversation via `/ask_ai` with contextual history.
+- **Player Stats**: Quick overview using `/stats` or detailed breakdown using `/player_info`.
+- **Standings & Leaderboards**: Track season-by-season rankings via `/standings` and `/leaderboard`.
+- **Interactive Charts**: Render visual performance graphs with `/stats_chart`.
+- **Matches**: Live match reporting and upcoming schedules via `/matches`.
+
 ## Prerequisites
 1. **Python 3.10+** installed.
 2. **Discord Developer Account** with a registered Bot application.
