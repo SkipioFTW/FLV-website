@@ -70,11 +70,12 @@ export type MetaAnalytics = {
         winRate: number;
         avgAcs: number;
         avgKd: number;
-        maps: {
-            mapName: string;
-            pickRate: number;
-            winRate: number;
-        }[];
+        avgAdr: number;
+        avgKast: number;
+        avgHsPct: number;
+        totalFk: number;
+        topPlayers: { id: number, name: string, acs: number }[];
+        maps: { mapName: string; pickRate: number; winRate: number }[];
     }[];
     maps: {
         name: string;
@@ -82,6 +83,7 @@ export type MetaAnalytics = {
         avgRounds: number;
         t1WinRate: number;
         t2WinRate: number;
+        topTeams: { id: number, name: string, wins: number }[];
     }[];
 };
 
@@ -495,7 +497,7 @@ export async function getStandings(seasonId?: string): Promise<Map<string, Stand
         const filteredTeams = teamsToProcess.filter(
             (t) => !['FAT1', 'FAT2'].includes(t.name)
         );
-        const excludeIds = teams
+        const excludeIds = teamsToProcess
             .filter((t) => ['FAT1', 'FAT2'].includes(t.name))
             .map((t) => t.id);
 
@@ -825,10 +827,12 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
             matchesQuery = matchesQuery.or(seasonFilter);
         }
 
-        const [statsRes, mapsRes, matchesRes] = await Promise.all([
-            supabase.from('match_stats_map').select('agent, acs, kills, deaths, match_id, map_index, team_id'),
+        const [statsRes, mapsRes, matchesRes, playersRes, teamsRes] = await Promise.all([
+            supabase.from('match_stats_map').select('agent, acs, kills, deaths, match_id, map_index, team_id, player_id, adr, kast, hs_pct, fk'),
             supabase.from('match_maps').select('match_id, map_index, map_name, team1_rounds, team2_rounds, winner_id'),
-            matchesQuery
+            matchesQuery,
+            supabase.from('players').select('id, name'),
+            supabase.from('teams').select('id, name')
         ]);
 
         if (statsRes.error) throw statsRes.error;
@@ -839,20 +843,40 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
         const matchIds = new Set(matches.map(m => m.id));
         const matchMap = new Map(matches.map(m => [m.id, m]));
 
+        const playersMap = new Map(playersRes.data?.map(p => [p.id, p.name]) || []);
+        const teamsMap = new Map(teamsRes.data?.map(t => [t.id, t.name]) || []);
+
         const stats = (statsRes.data || []).filter(s => matchIds.has(s.match_id));
         const maps = (mapsRes.data || []).filter(m => matchIds.has(m.match_id));
 
         // 1. Map Analytics
-        const mapAnalyticsMap = new Map<string, { count: number, totalRounds: number, t1Wins: number, t2Wins: number }>();
+        const mapAnalyticsMap = new Map<string, { 
+            count: number, 
+            totalRounds: number, 
+            t1Wins: number, 
+            t2Wins: number,
+            teamWins: Map<number, number>
+        }>();
+
         maps.forEach(m => {
-            const current = mapAnalyticsMap.get(m.map_name) || { count: 0, totalRounds: 0, t1Wins: 0, t2Wins: 0 };
+            const current = mapAnalyticsMap.get(m.map_name) || { 
+                count: 0, 
+                totalRounds: 0, 
+                t1Wins: 0, 
+                t2Wins: 0,
+                teamWins: new Map<number, number>()
+            };
             current.count += 1;
             current.totalRounds += (m.team1_rounds || 0) + (m.team2_rounds || 0);
+            
             if (m.winner_id) {
                 const match = matchMap.get(m.match_id);
                 if (match) {
                     if (m.winner_id === match.team1_id) current.t1Wins += 1;
                     else if (m.winner_id === match.team2_id) current.t2Wins += 1;
+                    
+                    const wins = current.teamWins.get(m.winner_id) || 0;
+                    current.teamWins.set(m.winner_id, wins + 1);
                 }
             }
             mapAnalyticsMap.set(m.map_name, current);
@@ -863,7 +887,11 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
             count: data.count,
             avgRounds: parseFloat((data.totalRounds / data.count).toFixed(1)),
             t1WinRate: Math.round((data.t1Wins / data.count) * 100),
-            t2WinRate: Math.round((data.t2Wins / data.count) * 100)
+            t2WinRate: Math.round((data.t2Wins / data.count) * 100),
+            topTeams: Array.from(data.teamWins.entries())
+                .map(([id, wins]) => ({ id, name: teamsMap.get(id) || 'Unknown', wins }))
+                .sort((a, b) => b.wins - a.wins)
+                .slice(0, 3)
         }));
 
         // 2. Agent Analytics
@@ -873,6 +901,12 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
             totalAcs: number,
             totalKills: number,
             totalDeaths: number,
+            totalAdr: number,
+            totalKast: number,
+            totalHsPct: number,
+            totalFk: number,
+            enhancedPicks: number,
+            playerAcs: Map<number, number[]>, // player_id -> ACS values
             maps: Map<string, { picks: number, wins: number }>
         }>();
 
@@ -891,6 +925,12 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
                 totalAcs: 0,
                 totalKills: 0,
                 totalDeaths: 0,
+                totalAdr: 0,
+                totalKast: 0,
+                totalHsPct: 0,
+                totalFk: 0,
+                enhancedPicks: 0,
+                playerAcs: new Map<number, number[]>(),
                 maps: new Map<string, { picks: number, wins: number }>()
             };
 
@@ -898,6 +938,21 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
             current.totalAcs += s.acs || 0;
             current.totalKills += s.kills || 0;
             current.totalDeaths += s.deaths || 0;
+            current.totalFk += s.fk || 0;
+
+            if (s.adr !== null && s.adr !== undefined) {
+                current.totalAdr += s.adr;
+                current.totalKast += s.kast || 0;
+                current.totalHsPct += s.hs_pct || 0;
+                current.enhancedPicks += 1;
+            }
+
+            // Track individual player performance for top players
+            if (s.player_id && s.acs) {
+                const acsArr = current.playerAcs.get(s.player_id) || [];
+                acsArr.push(s.acs);
+                current.playerAcs.set(s.player_id, acsArr);
+            }
 
             // Determine if agent won this map
             const teamWon = mapInfo.winner_id === s.team_id;
@@ -916,10 +971,22 @@ export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics
         const totalMaps = maps.length || 1;
         const agentsOut = Array.from(agentStatsMap.entries()).map(([name, data]) => ({
             name,
-            pickRate: Math.round((data.picks / (totalMaps * 10)) * 100), // 10 picks per map (5 per team)
+            pickRate: Math.round((data.picks / (totalMaps * 2)) * 100),
             winRate: Math.round((data.wins / data.picks) * 100),
             avgAcs: Math.round(data.totalAcs / data.picks),
             avgKd: data.totalDeaths > 0 ? parseFloat((data.totalKills / data.totalDeaths).toFixed(2)) : data.totalKills,
+            avgAdr: data.enhancedPicks > 0 ? Math.round(data.totalAdr / data.enhancedPicks) : 0,
+            avgKast: data.enhancedPicks > 0 ? Math.round(data.totalKast / data.enhancedPicks) : 0,
+            avgHsPct: data.enhancedPicks > 0 ? Math.round(data.totalHsPct / data.enhancedPicks) : 0,
+            totalFk: data.totalFk,
+            topPlayers: Array.from(data.playerAcs.entries())
+                .map(([id, acsArr]) => ({
+                    id,
+                    name: playersMap.get(id) || 'Unknown',
+                    acs: Math.round(acsArr.reduce((a, b) => a + b, 0) / acsArr.length)
+                }))
+                .sort((a, b) => b.acs - a.acs)
+                .slice(0, 3),
             maps: Array.from(data.maps.entries()).map(([mapName, mData]) => ({
                 mapName,
                 pickRate: Math.round((mData.picks / totalMaps) * 100),
