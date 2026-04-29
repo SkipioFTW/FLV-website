@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Orbitron, Montserrat } from "next/font/google";
 import "./globals.css";
-import ActivityTracker from "@/components/ActivityTracker";
-import AIAnalyst from "@/components/AIAnalyst";
 
 const orbitron = Orbitron({
   variable: "--font-orbitron",
@@ -17,8 +15,8 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
-  title: "S24 Portal | Valorant Tournament Hub",
-  description: "Advanced tournament management and statistics portal for Season 24.",
+  title: "FLV Production Suite | Valorant Tournament Hub",
+  description: "Advanced tournament management and broadcast overlays.",
 };
 
 export default function RootLayout({
@@ -32,22 +30,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${orbitron.variable} ${montserrat.variable} antialiased selection:bg-val-red selection:text-white`}
       >
-        <div className="relative min-h-screen">
-          <ActivityTracker />
-          {/* Main Content */}
-          <main className="relative z-10">
-            {children}
-          </main>
-
-          {/* AI League Analyst */}
-          <AIAnalyst />
-
-          {/* Background Ambient Glows */}
-          <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
-            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-val-red/10 blur-[120px] rounded-full" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-val-blue/5 blur-[120px] rounded-full" />
-          </div>
-        </div>
+        {children}
       </body>
     </html>
   );
