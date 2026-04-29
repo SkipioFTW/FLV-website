@@ -30,14 +30,14 @@ export default function MatchSearch({ matches, onSelect, currentId }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const filteredMatches = query.trim() === ''
-        ? matches.slice(0, 10)
+        ? matches.slice(0, 50)
         : matches.filter(m =>
             m.team1.name.toLowerCase().includes(query.toLowerCase()) ||
             m.team2.name.toLowerCase().includes(query.toLowerCase()) ||
             m.team1.tag.toLowerCase().includes(query.toLowerCase()) ||
             m.team2.tag.toLowerCase().includes(query.toLowerCase()) ||
             String(m.id).includes(query)
-        ).slice(0, 20);
+        ).slice(0, 50);
 
     const currentMatch = matches.find(m => m.id === currentId);
 

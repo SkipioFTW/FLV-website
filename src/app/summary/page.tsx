@@ -26,7 +26,7 @@ function SummaryContent() {
         // Try to keep the same week if it exists in the new season
         const currentWeeks = Array.from(new Set(ms.map(m => m.week)));
         if (!currentWeeks.includes(selectedWeek)) {
-          setSelectedWeek(ms[0].week);
+          setSelectedWeek(ms[0].match_type === 'playoff' ? 0 : ms[0].week);
         }
         setMatchId(0);
         setDetails(null);
@@ -65,13 +65,21 @@ function SummaryContent() {
               onChange={e => setSelectedWeek(parseInt(e.target.value))}
               className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:border-val-blue outline-none transition-colors h-[48px]"
             >
-              <option value={0}>Playoffs</option>
-              {[1, 2, 3, 4, 5, 6].map(w => <option key={w} value={w}>Week {w}</option>)}
+              {matches.some(m => m.match_type === 'playoff') && (
+                <option value={0}>Playoffs</option>
+              )}
+              {Array.from(new Set(matches.filter(m => m.match_type !== 'playoff').map(m => m.week)))
+                .sort((a, b) => a - b)
+                .map(w => <option key={w} value={w}>Week {w}</option>)}
             </select>
           </div>
           <div className="md:col-span-2">
             <MatchSearch
-              matches={matches}
+              matches={matches.filter(m => 
+                selectedWeek === 0 
+                  ? m.match_type === 'playoff' 
+                  : m.week === selectedWeek && m.match_type !== 'playoff'
+              )}
               onSelect={setMatchId}
               currentId={matchId}
             />
