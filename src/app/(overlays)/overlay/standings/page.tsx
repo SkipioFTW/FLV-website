@@ -7,10 +7,18 @@ export default async function StandingsOverlay(props: {
 }) {
   const searchParams = await props.searchParams;
   const seasonId = searchParams.season || await getDefaultSeason();
-  const group = (searchParams.group || 'A').toUpperCase();
+  const group = searchParams.group || 'Earth';
 
   const allStandings = await getStandings(seasonId);
-  const teams: StandingsRow[] = allStandings.get(group) || [];
+  
+  // Find group case-insensitively
+  let teams: StandingsRow[] = [];
+  for (const [key, value] of allStandings.entries()) {
+    if (key.toLowerCase() === group.toLowerCase()) {
+      teams = value;
+      break;
+    }
+  }
 
   return (
     <div className="w-screen h-screen bg-transparent flex items-center justify-center overflow-hidden">
