@@ -453,28 +453,46 @@ export async function getStandings(seasonId?: string): Promise<Map<string, Stand
         let teamsQuery = supabase.from('teams').select('id, name, tag, group_name, logo_path');
 
         if (!isAllTime) {
-            const { data: history } = await supabase
+            const { data: history, error: hError } = await supabase
                 .from('team_history')
-                .select('team_id')
+                .select('team_id, group_name')
                 .eq('season_id', activeSeason);
 
-            const teamIds = (history || []).map(h => h.team_id);
+            if (hError) throw hError;
+            
+            const historyMap = new Map((history || []).map(h => [h.team_id, h.group_name]));
+            const teamIds = Array.from(historyMap.keys());
+
             if (teamIds.length > 0) {
                 teamsQuery = teamsQuery.in('id', teamIds);
-            } else if (activeSeason !== 'S23') {
-                // If history is empty for a season that isn't S23, show nothing
+            } else {
+                // If no history found for this season, return empty
                 return new Map();
             }
-            // For S23, if history is empty, we don't filter (fallback to showing all teams)
+
+            const { data: teams, error: teamsError } = await teamsQuery;
+            if (teamsError) throw teamsError;
+
+            // Merge group_name from history, fall back to team's default only if history group is null
+            const mergedTeams = (teams || []).map(t => ({
+                ...t,
+                group_name: historyMap.get(t.id) || t.group_name
+            }));
+
+            if (mergedTeams.length === 0) return new Map();
+            
+            // Re-assign to teams for the rest of the function
+            var teamsToProcess = mergedTeams;
+        } else {
+            const { data: teams, error: teamsError } = await teamsQuery;
+            if (teamsError) throw teamsError;
+            var teamsToProcess = teams || [];
         }
 
-        const { data: teams, error: teamsError } = await teamsQuery;
-
-        if (teamsError) throw teamsError;
-        if (!teams || teams.length === 0) return new Map();
+        if (teamsToProcess.length === 0) return new Map();
 
         // Exclude FAT1 and FAT2
-        const filteredTeams = teams.filter(
+        const filteredTeams = teamsToProcess.filter(
             (t) => !['FAT1', 'FAT2'].includes(t.name)
         );
         const excludeIds = teams
@@ -2655,17 +2673,29 @@ export async function getTeamsBasic(seasonId?: string): Promise<{ id: number, na
             .order('name');
 
         if (!isAllTime) {
-            const { data: history } = await supabase
+            const { data: history, error: hError } = await supabase
                 .from('team_history')
-                .select('team_id')
+                .select('team_id, group_name')
                 .eq('season_id', activeSeason);
 
-            const teamIds = (history || []).map(h => h.team_id);
+            if (hError) throw hError;
+            
+            const historyMap = new Map((history || []).map(h => [h.team_id, h.group_name]));
+            const teamIds = Array.from(historyMap.keys());
+
             if (teamIds.length > 0) {
                 query = query.in('id', teamIds);
-            } else if (activeSeason !== 'S23') {
+            } else {
                 return [];
             }
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            return (data || []).map(t => ({
+                ...t,
+                group_name: historyMap.get(t.id) || t.group_name
+            }));
         }
 
         const { data, error } = await query;
