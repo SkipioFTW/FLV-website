@@ -20,7 +20,7 @@ const SLIDE_LABELS: Record<Slide, string> = {
 const SLIDE_DURATION = 10000; // 10 seconds
 
 function pct(n: number) {
-  return `${(n * 100).toFixed(1)}%`;
+  return `${n.toFixed(1)}%`;
 }
 
 function StatCompare({ label, v1, v2, format = "pct" }: { label: string; v1: number; v2: number; format?: "pct" | "num" }) {
@@ -38,8 +38,8 @@ function StatCompare({ label, v1, v2, format = "pct" }: { label: string; v1: num
 }
 
 function OverviewSlide({ t1, t2 }: { t1: TeamPerformance; t2: TeamPerformance }) {
-  const t1Matches = t1.progression.length;
-  const t2Matches = t2.progression.length;
+  const t1Matches = t1.summary.matchesCompleted;
+  const t2Matches = t2.summary.matchesCompleted;
 
   return (
     <div className="slide-content">

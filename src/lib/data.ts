@@ -438,6 +438,7 @@ export type TeamPerformance = {
         pistolWinRate: number;
         roundWinRate: number;
         avgRoundsPerMap: number;
+        matchesCompleted: number;
     };
 };
 
@@ -1403,7 +1404,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
         let matchQuery = supabase
             .from('matches')
             .select('*')
-            .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`);
+            .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`)
+            .eq('status', 'completed');
 
         if (!isAllTime) {
             const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
@@ -1431,7 +1433,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
                 summary: {
                     pistolWinRate: 0,
                     roundWinRate: 0,
-                    avgRoundsPerMap: 0
+                    avgRoundsPerMap: 0,
+                    matchesCompleted: 0
                 }
             };
         }
@@ -1610,7 +1613,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             summary: {
                 pistolWinRate: totalPistols > 0 ? Math.round((pistolWins / totalPistols) * 100) : 0,
                 roundWinRate: totalRounds > 0 ? Math.round((roundsWon / totalRounds) * 100) : 0,
-                avgRoundsPerMap: maps.length > 0 ? parseFloat((totalRounds / maps.length).toFixed(1)) : 0
+                avgRoundsPerMap: maps.length > 0 ? parseFloat((roundsWon / maps.length).toFixed(1)) : 0,
+                matchesCompleted: matches.length
             }
         };
     } catch (error) {
@@ -1626,7 +1630,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             summary: {
                 pistolWinRate: 0,
                 roundWinRate: 0,
-                avgRoundsPerMap: 0
+                avgRoundsPerMap: 0,
+                matchesCompleted: 0
             }
         };
     }

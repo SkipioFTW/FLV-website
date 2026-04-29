@@ -14,7 +14,7 @@ export default async function BroadcastHubPage() {
   // Fetch Players
   const { data: playersData } = await supabase
     .from('players')
-    .select('id, name, riot_id, team')
+    .select('id, name, riot_id')
     .order('name');
 
   return (

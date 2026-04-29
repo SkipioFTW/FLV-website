@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 
 type Team = { id: number; name: string; tag: string };
-type Player = { id: number; name: string; riot_id: string; team: string };
+type Player = { id: number; name: string; riot_id: string };
 
 interface Props {
   teams: Team[];
@@ -134,7 +134,7 @@ export default function BroadcastHubClient({ teams, players, seasonId }: Props) 
   const getUrl = (path: string) => `${baseUrl}/overlay/${path}`;
 
   const teamOptions = teams.map(t => ({ id: t.id.toString(), label: t.name, sublabel: t.tag }));
-  const playerOptions = players.map(p => ({ id: p.id.toString(), label: p.name, sublabel: `${p.riot_id} (${p.team})` }));
+  const playerOptions = players.map(p => ({ id: p.id.toString(), label: p.name, sublabel: p.riot_id }));
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
