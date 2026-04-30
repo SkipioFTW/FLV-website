@@ -1,5 +1,6 @@
 import { getSkipioLeaderboard, getSkipioTier } from '@/lib/data';
 import { supabase } from '@/lib/supabase';
+import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 
 export const revalidate = 60; // Revalidate every minute
@@ -36,16 +37,11 @@ export default async function SkipioLeaderboardPage(props: {
 
   return (
     <div className="min-h-screen bg-val-bg text-white pb-20 pt-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <Navbar />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
         
         {/* Header Section */}
         <div className="mb-8">
-          <Link href="/" className="inline-flex items-center text-gray-400 hover:text-val-red transition-colors mb-4 group">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2 transform group-hover:-translate-x-1 transition-transform">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-            </svg>
-            <span className="font-display tracking-widest text-sm uppercase">Back to Hub</span>
-          </Link>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4 border-b border-white/10 pb-6">
             <div>
               <h1 className="text-4xl md:text-5xl font-display font-black text-white uppercase tracking-tight">

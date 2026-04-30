@@ -752,7 +752,7 @@ class AnalyticsCog(commands.Cog):
     # ── /elo ─────────────────────────────────────────────────────────────────
     @app_commands.command(name="elo", description="Show a player's Skipio ELO rating")
     @app_commands.describe(name="Player name or mention", season="Season ID (e.g. S24 or all)")
-    @app_commands.autocomplete(season=season_autocomplete)
+    @app_commands.autocomplete(name=player_autocomplete, season=season_autocomplete)
     async def elo(self, interaction: discord.Interaction, name: str, season: str = 'S24'):
         await interaction.response.defer()
         try:
