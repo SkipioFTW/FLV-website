@@ -716,50 +716,66 @@ class AnalyticsCog(commands.Cog):
                 
                 p_groups = {row[0]: get_rank_grp(row[1]) for row in all_players}
                 
-                # Fetch all match stats
+                # Fetch all match stats (with match_id for lobby grouping)
                 cursor.execute("""
-                    SELECT msm.player_id, msm.acs, msm.kills, msm.deaths, msm.adr, msm.kast
+                    SELECT msm.player_id, msm.match_id, msm.acs, msm.kills, msm.deaths, msm.adr, msm.kast
                     FROM match_stats_map msm
                     JOIN matches m ON msm.match_id = m.id
                     WHERE m.status = 'completed'
-                    ORDER BY m.id ASC
                 """)
                 stats = cursor.fetchall()
                 
-                # Calculate group averages
-                grp_totals = {1: [0,0], 2: [0,0], 3: [0,0], 4: [0,0]}
-                p_scores = {}
+                # --- Global rank-group averages ---
+                grp_totals = {1: [0.0, 0], 2: [0.0, 0], 3: [0.0, 0], 4: [0.0, 0]}
+                # --- Lobby (match+group) score lists ---
+                lobby_scores = {}  # key: (match_id, grp) -> [raw_scores]
+                all_appearances = []  # (pid, match_id, raw_score, grp)
                 
                 for row in stats:
-                    pid, acs, kills, deaths, adr, kast = row
-                    kd = (kills / deaths) if deaths and deaths > 0 else kills
-                    raw_score = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
-                    
+                    pid, mid, acs, kills, deaths, adr, kast = row
                     grp = p_groups.get(pid, 2)
-                    grp_totals[grp][0] += raw_score
+                    kd = (kills / deaths) if deaths and deaths > 0 else (kills or 0)
+                    raw = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
+                    
+                    grp_totals[grp][0] += raw
                     grp_totals[grp][1] += 1
                     
-                    if pid not in p_scores: p_scores[pid] = []
-                    p_scores[pid].append(raw_score)
+                    key = (mid, grp)
+                    if key not in lobby_scores: lobby_scores[key] = []
+                    lobby_scores[key].append(raw)
+                    
+                    all_appearances.append((pid, mid, raw, grp))
                 
-                grp_avgs = {g: (v[0]/v[1] if v[1]>0 else 150) for g, v in grp_totals.items()}
+                grp_avgs = {g: (v[0]/v[1] if v[1] > 0 else 150) for g, v in grp_totals.items()}
                 
-                # Calculate ELO for this player only
+                # --- Blended scores per player ---
+                p_blended = {}
+                for (pid, mid, raw, grp) in all_appearances:
+                    g_avg = grp_avgs[grp]
+                    lobby = lobby_scores.get((mid, grp), [])
+                    l_avg = sum(lobby)/len(lobby) if len(lobby) > 1 else g_avg
+                    
+                    g_norm = (raw / g_avg) * 100 if g_avg > 0 else 100
+                    l_norm = (raw / l_avg) * 100 if l_avg > 0 else 100
+                    blended = g_norm * 0.5 + l_norm * 0.5
+                    
+                    if pid not in p_blended: p_blended[pid] = []
+                    p_blended[pid].append(blended)
+                
+                # --- Final ELO for target player ---
                 elo = 1000
                 maps_played = 0
                 avg_raw = 0
                 
-                if p_id in p_scores:
-                    my_grp = p_groups.get(p_id, 2)
-                    my_avg = grp_avgs[my_grp]
+                if p_id in p_blended:
+                    blended_list = p_blended[p_id]
+                    maps_played = len(blended_list)
+                    avg_blended = sum(blended_list) / maps_played
+                    elo = 1000 + (avg_blended - 100) * 20
                     
-                    for s in p_scores[p_id]:
-                        norm = (s / my_avg) * 100
-                        change = (norm - 100) * 2
-                        elo += change
-                        
-                    maps_played = len(p_scores[p_id])
-                    avg_raw = sum(p_scores[p_id]) / maps_played
+                    my_raws = [r for (pid, mid, r, grp) in all_appearances if pid == p_id]
+                    avg_raw = sum(my_raws) / len(my_raws) if my_raws else 0
+
                 
             def get_tier(e):
                 if e >= 1400: return "🔥 Godlike"
