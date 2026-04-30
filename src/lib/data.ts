@@ -3123,3 +3123,136 @@ export async function getTournamentWinProbability(iterations: number = 1000, sea
         return [];
     }
 }
+
+export type SkipioEntry = {
+  playerId: number;
+  name: string;
+  riotId: string;
+  rank: string;
+  team: string;
+  elo: number;
+  mapsPlayed: number;
+  avgRawScore: number;
+};
+
+const RANK_GROUPS: Record<string, number> = {
+  'Iron': 1, 'Bronze': 1,
+  'Silver': 2, 'Gold': 2,
+  'Platinum': 3, 'Diamond': 3,
+  'Ascendant': 4, 'Immortal': 4, 'Radiant': 4
+};
+
+function getRankGroup(rankStr: string | null): number {
+  if (!rankStr) return 2; // Default to mid
+  const upper = rankStr.toUpperCase();
+  if (upper.includes('IRON') || upper.includes('BRONZE')) return 1;
+  if (upper.includes('SILVER') || upper.includes('GOLD')) return 2;
+  if (upper.includes('PLATINUM') || upper.includes('DIAMOND')) return 3;
+  if (upper.includes('ASCENDANT') || upper.includes('IMMORTAL') || upper.includes('RADIANT')) return 4;
+  return 2;
+}
+
+export function calculateRawScore(acs: number, kd: number, adr: number, kast: number): number {
+  return (acs * 0.40) + (kd * 30 * 0.30) + (adr * 0.20) + (kast * 0.10);
+}
+
+export async function getSkipioLeaderboard(): Promise<SkipioEntry[]> {
+  // A. Fetch all players
+  const { data: players, error: pError } = await supabase
+    .from('players')
+    .select('id, name, riot_id, rank, default_team_id, teams(tag)');
+    
+  if (pError || !players) {
+    console.error('Error fetching players for Skipio:', pError);
+    return [];
+  }
+
+  // B. Fetch all completed match stats
+  const { data: stats, error: sError } = await supabase
+    .from('match_stats_map')
+    .select('player_id, acs, kills, deaths, adr, kast, matches!inner(id, status)')
+    .eq('matches.status', 'completed')
+    .order('matches(id)', { ascending: true }); // chronological
+
+  if (sError || !stats) {
+    console.error('Error fetching stats for Skipio:', sError);
+    return [];
+  }
+
+  // Group stats by player to calculate per-map RawScore
+  const playerRawScores = new Map<number, { rankGrp: number, scores: number[] }>();
+
+  players.forEach(p => {
+    playerRawScores.set(p.id, {
+      rankGrp: getRankGroup(p.rank),
+      scores: []
+    });
+  });
+
+  // Calculate RawScore per appearance
+  const appearances: { playerId: number, rawScore: number }[] = [];
+
+  stats.forEach((s: any) => {
+    const pid = s.player_id;
+    if (!playerRawScores.has(pid)) return;
+    
+    const kd = s.deaths > 0 ? s.kills / s.deaths : s.kills;
+    const rawScore = calculateRawScore(s.acs || 0, kd, s.adr || 0, s.kast || 0);
+    
+    appearances.push({ playerId: pid, rawScore });
+    playerRawScores.get(pid)!.scores.push(rawScore);
+  });
+
+  // C. Calculate average RawScore per rank group
+  const groupTotals = { 1: { sum: 0, count: 0 }, 2: { sum: 0, count: 0 }, 3: { sum: 0, count: 0 }, 4: { sum: 0, count: 0 } };
+
+  playerRawScores.forEach(data => {
+    data.scores.forEach(score => {
+      groupTotals[data.rankGrp as 1|2|3|4].sum += score;
+      groupTotals[data.rankGrp as 1|2|3|4].count += 1;
+    });
+  });
+
+  const groupAvgs = {
+    1: groupTotals[1].count > 0 ? groupTotals[1].sum / groupTotals[1].count : 150,
+    2: groupTotals[2].count > 0 ? groupTotals[2].sum / groupTotals[2].count : 150,
+    3: groupTotals[3].count > 0 ? groupTotals[3].sum / groupTotals[3].count : 150,
+    4: groupTotals[4].count > 0 ? groupTotals[4].sum / groupTotals[4].count : 150
+  };
+
+  // D. Calculate ELO chronologically
+  const elos = new Map<number, number>();
+  players.forEach(p => elos.set(p.id, 1000));
+
+  appearances.forEach(app => {
+    const pData = playerRawScores.get(app.playerId);
+    if (!pData) return;
+    
+    const grpAvg = groupAvgs[pData.rankGrp as 1|2|3|4];
+    const normalizedScore = (app.rawScore / grpAvg) * 100;
+    const eloChange = (normalizedScore - 100) * 2;
+    
+    elos.set(app.playerId, elos.get(app.playerId)! + eloChange);
+  });
+
+  // E. Build final array
+  const leaderboard: SkipioEntry[] = players.map(p => {
+    const pData = playerRawScores.get(p.id)!;
+    const mapsPlayed = pData.scores.length;
+    const avgRawScore = mapsPlayed > 0 ? pData.scores.reduce((a, b) => a + b, 0) / mapsPlayed : 0;
+    
+    return {
+      playerId: p.id,
+      name: p.name,
+      riotId: p.riot_id,
+      rank: p.rank || 'Unranked',
+      team: p.teams ? (p.teams as any).tag : 'FA',
+      elo: Math.round(elos.get(p.id) || 1000),
+      mapsPlayed,
+      avgRawScore: parseFloat(avgRawScore.toFixed(1))
+    };
+  });
+
+  // Sort descending by ELO
+  return leaderboard.sort((a, b) => b.elo - a.elo);
+}
