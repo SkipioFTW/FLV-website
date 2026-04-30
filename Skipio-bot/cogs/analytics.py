@@ -4,7 +4,7 @@ from discord import app_commands
 import re
 from database import get_conn, get_default_season
 from utils.helpers import run_in_executor, determine_archetype
-from utils.autocomplete import player_autocomplete, team_autocomplete, rank_autocomplete
+from utils.autocomplete import player_autocomplete, team_autocomplete, rank_autocomplete, season_autocomplete
 from utils.charts import generate_radar_chart
 
 # ── Design tokens (mirror charts.py) ─────────────────────────────────────────
@@ -46,6 +46,82 @@ async def _fetch_discord_avatar(bot: discord.Client, uuid: str) -> str | None:
 class AnalyticsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    def _get_rank_grp(self, r):
+        if not r: return 2
+        ru = r.upper()
+        if 'IRON' in ru or 'BRONZE' in ru: return 1
+        if 'SILVER' in ru or 'GOLD' in ru: return 2
+        if 'PLATINUM' in ru or 'DIAMOND' in ru: return 3
+        if 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: return 4
+        return 2
+
+    def _calculate_skipio_elos(self, cursor, season='all'):
+        # 1. Fetch all player ranks
+        cursor.execute("SELECT id, rank FROM players")
+        p_ranks = {r[0]: r[1] for r in cursor.fetchall()}
+        p_groups = {pid: self._get_rank_grp(rank) for pid, rank in p_ranks.items()}
+
+        # 2. Fetch matches for context
+        sf = "1=1" if season == 'all' else "m.season_id=%s"
+        cursor.execute(f"SELECT id FROM matches m WHERE m.status='completed' AND {sf}", (season,) if season != 'all' else ())
+        m_ids = [r[0] for r in cursor.fetchall()]
+        if not m_ids: return {}, []
+
+        # 3. Fetch stats
+        placeholders = ','.join(['%s'] * len(m_ids))
+        cursor.execute(f"""
+            SELECT player_id, match_id, acs, kills, deaths, adr, kast
+            FROM match_stats_map
+            WHERE match_id IN ({placeholders})
+        """, tuple(m_ids))
+        stats = cursor.fetchall()
+
+        # 4. Global Averages & Lobby Scores
+        grp_totals = {1: [0.0, 0], 2: [0.0, 0], 3: [0.0, 0], 4: [0.0, 0]}
+        lobby_scores = {} # (mid, grp) -> [raw_scores]
+        appearances = [] # (pid, mid, raw, grp)
+
+        for row in stats:
+            pid, mid, acs, kills, deaths, adr, kast = row
+            grp = p_groups.get(pid, 2)
+            kd = (kills / deaths) if deaths and deaths > 0 else (kills or 0)
+            raw = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
+
+            grp_totals[grp][0] += raw
+            grp_totals[grp][1] += 1
+            
+            key = (mid, grp)
+            if key not in lobby_scores: lobby_scores[key] = []
+            lobby_scores[key].append(raw)
+            appearances.append((pid, mid, raw, grp))
+
+        grp_avgs = {g: (v[0]/v[1] if v[1]>0 else 150) for g, v in grp_totals.items()}
+
+        # 5. Blended Progression
+        player_history = {} # pid -> [elo_at_k]
+        player_blended_list = {} # pid -> [blended_scores]
+
+        # Sort appearances by match ID (chronological)
+        appearances.sort(key=lambda x: x[1])
+
+        for (pid, mid, raw, grp) in appearances:
+            g_avg = grp_avgs[grp]
+            lobby = lobby_scores.get((mid, grp), [])
+            l_avg = sum(lobby)/len(lobby) if len(lobby) > 1 else g_avg
+            
+            g_norm = (raw / g_avg) * 100 if g_avg > 0 else 100
+            l_norm = (raw / l_avg) * 100 if l_avg > 0 else 100
+            blended = g_norm * 0.5 + l_norm * 0.5
+
+            if pid not in player_blended_list: player_blended_list[pid] = []
+            player_blended_list[pid].append(blended)
+
+            if pid not in player_history: player_history[pid] = []
+            avg_so_far = sum(player_blended_list[pid]) / len(player_blended_list[pid])
+            player_history[pid].append(round(1000 + (avg_so_far - 100) * 20))
+
+        return player_history, appearances
 
     # ── /standings ───────────────────────────────────────────────────────────
     @app_commands.command(name="standings", description="View current group standings")
@@ -675,19 +751,18 @@ class AnalyticsCog(commands.Cog):
 
     # ── /elo ─────────────────────────────────────────────────────────────────
     @app_commands.command(name="elo", description="Show a player's Skipio ELO rating")
-    @app_commands.describe(name="Player name or @mention")
-    @app_commands.autocomplete(name=player_autocomplete)
-    async def elo(self, interaction: discord.Interaction, name: str):
+    @app_commands.describe(name="Player name or mention", season="Season ID (e.g. S24 or all)")
+    @app_commands.autocomplete(season=season_autocomplete)
+    async def elo(self, interaction: discord.Interaction, name: str, season: str = 'S24'):
         await interaction.response.defer()
         try:
-            mention_match = re.match(r"^<@!?(\d+)>$", name.strip())
-            pid_match = re.match(r"^#(\d+)$", name.strip())
-            
             with get_conn() as conn:
                 if not conn: return await interaction.followup.send("❌ DB Error.")
                 cursor = conn.cursor()
                 
                 # Identify player
+                pid_match = re.search(r'ID:\s*(\d+)', name)
+                mention_match = re.search(r'<@!?(\d+)>', name)
                 if pid_match:
                     cursor.execute("SELECT id, name, riot_id, rank, uuid FROM players WHERE id=%s", (pid_match.group(1),))
                 elif mention_match:
@@ -701,81 +776,22 @@ class AnalyticsCog(commands.Cog):
                 
                 p_id, p_name, p_riot, p_rank, p_uuid = player
                 
-                # Fetch all players and their rank groups to calc group averages
-                cursor.execute("SELECT id, rank FROM players")
-                all_players = cursor.fetchall()
+                p_history, all_apps = self._calculate_skipio_elos(cursor, season)
                 
-                def get_rank_grp(r):
-                    if not r: return 2
-                    ru = r.upper()
-                    if 'IRON' in ru or 'BRONZE' in ru: return 1
-                    if 'SILVER' in ru or 'GOLD' in ru: return 2
-                    if 'PLATINUM' in ru or 'DIAMOND' in ru: return 3
-                    if 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: return 4
-                    return 2
+                elo_history = p_history.get(p_id, [])
+                maps_played = len(elo_history)
+                current_elo = elo_history[-1] if elo_history else 1000
                 
-                p_groups = {row[0]: get_rank_grp(row[1]) for row in all_players}
-                
-                # Fetch all match stats (with match_id for lobby grouping)
-                cursor.execute("""
-                    SELECT msm.player_id, msm.match_id, msm.acs, msm.kills, msm.deaths, msm.adr, msm.kast
-                    FROM match_stats_map msm
-                    JOIN matches m ON msm.match_id = m.id
-                    WHERE m.status = 'completed'
-                """)
-                stats = cursor.fetchall()
-                
-                # --- Global rank-group averages ---
-                grp_totals = {1: [0.0, 0], 2: [0.0, 0], 3: [0.0, 0], 4: [0.0, 0]}
-                # --- Lobby (match+group) score lists ---
-                lobby_scores = {}  # key: (match_id, grp) -> [raw_scores]
-                all_appearances = []  # (pid, match_id, raw_score, grp)
-                
-                for row in stats:
-                    pid, mid, acs, kills, deaths, adr, kast = row
-                    grp = p_groups.get(pid, 2)
-                    kd = (kills / deaths) if deaths and deaths > 0 else (kills or 0)
-                    raw = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
-                    
-                    grp_totals[grp][0] += raw
-                    grp_totals[grp][1] += 1
-                    
-                    key = (mid, grp)
-                    if key not in lobby_scores: lobby_scores[key] = []
-                    lobby_scores[key].append(raw)
-                    
-                    all_appearances.append((pid, mid, raw, grp))
-                
-                grp_avgs = {g: (v[0]/v[1] if v[1] > 0 else 150) for g, v in grp_totals.items()}
-                
-                # --- Blended scores per player ---
-                p_blended = {}
-                for (pid, mid, raw, grp) in all_appearances:
-                    g_avg = grp_avgs[grp]
-                    lobby = lobby_scores.get((mid, grp), [])
-                    l_avg = sum(lobby)/len(lobby) if len(lobby) > 1 else g_avg
-                    
-                    g_norm = (raw / g_avg) * 100 if g_avg > 0 else 100
-                    l_norm = (raw / l_avg) * 100 if l_avg > 0 else 100
-                    blended = g_norm * 0.5 + l_norm * 0.5
-                    
-                    if pid not in p_blended: p_blended[pid] = []
-                    p_blended[pid].append(blended)
-                
-                # --- Final ELO for target player ---
-                elo = 1000
-                maps_played = 0
-                avg_raw = 0
-                
-                if p_id in p_blended:
-                    blended_list = p_blended[p_id]
-                    maps_played = len(blended_list)
-                    avg_blended = sum(blended_list) / maps_played
-                    elo = 1000 + (avg_blended - 100) * 20
-                    
-                    my_raws = [r for (pid, mid, r, grp) in all_appearances if pid == p_id]
-                    avg_raw = sum(my_raws) / len(my_raws) if my_raws else 0
+                # Trend
+                trend_str = ""
+                if len(elo_history) >= 2:
+                    diff = elo_history[-1] - elo_history[-2]
+                    if diff != 0:
+                        trend_str = f" ({'🟢 +' if diff > 0 else '🔴 '}{diff})"
 
+                # Avg Raw
+                my_raws = [row[2] for row in all_apps if row[0] == p_id]
+                avg_raw = sum(my_raws)/len(my_raws) if my_raws else 0
                 
             def get_tier(e):
                 if e >= 1400: return "🔥 Godlike"
@@ -786,17 +802,16 @@ class AnalyticsCog(commands.Cog):
                 return "🔴 Struggling"
 
             embed = discord.Embed(
-                title=f"⚡ Skipio ELO Rating",
+                title=f"⚡ Skipio ELO Rating" + (f" · `{season}`" if season != 'all' else " · `All Time`"),
                 color=V_BLUE
             )
             embed.add_field(name="Player", value=f"**{p_name}** `{p_riot}`\n{_rank_icon(p_rank)} `{p_rank or 'Unranked'}`", inline=True)
-            embed.add_field(name="Current ELO", value=f"## {round(elo)}", inline=True)
-            embed.add_field(name="Performance", value=f"**{get_tier(elo)}**", inline=True)
+            embed.add_field(name="Current ELO", value=f"## {current_elo}{trend_str}", inline=True)
+            embed.add_field(name="Performance", value=f"**{get_tier(current_elo)}**", inline=True)
             embed.add_field(name="Maps Played", value=f"`{maps_played}`", inline=True)
             embed.add_field(name="Avg Raw Score", value=f"`{round(avg_raw, 1)}`", inline=True)
-            embed.add_field(name="Rank Tier", value=f"`Group {p_groups.get(p_id, 2)}`", inline=True)
             
-            embed.set_footer(text="ELO starts at 1000. Rises when you outperform your rank peers.")
+            embed.set_footer(text="A blended average of your global rank peer comparison and match lobby comparison.")
             
             avatar = await _fetch_discord_avatar(self.bot, p_uuid)
             if avatar:
@@ -808,101 +823,32 @@ class AnalyticsCog(commands.Cog):
 
     # ── /skipio-leaderboard ──────────────────────────────────────────────────
     @app_commands.command(name="skipio-leaderboard", description="Show top players by Skipio ELO rating")
-    @app_commands.describe(rank="Filter by rank tier", min_games="Min maps played")
-    @app_commands.autocomplete(rank=rank_autocomplete)
-    async def skipio_leaderboard(self, interaction: discord.Interaction, rank: str = None, min_games: int = 3):
+    @app_commands.describe(rank="Filter by rank tier", season="Season ID", min_games="Min maps played")
+    @app_commands.autocomplete(rank=rank_autocomplete, season=season_autocomplete)
+    async def skipio_leaderboard(self, interaction: discord.Interaction, rank: str = None, season: str = 'S24', min_games: int = 3):
         await interaction.response.defer()
         try:
             with get_conn() as conn:
                 if not conn: return await interaction.followup.send("❌ DB Error.")
                 cursor = conn.cursor()
                 
-                # Fetch players
+                # Fetch target players
                 rank_filter = "WHERE rank ILIKE %s" if rank else ""
-                cursor.execute(f"SELECT id, name, riot_id, rank, uuid FROM players {rank_filter}", (f"%{rank}%",) if rank else ())
-                players = cursor.fetchall()
-                p_groups = {}
-                p_data = {}
-                for row in players:
-                    pid, name, rid, prank, uuid = row
-                    p_data[pid] = (name, rid, prank, uuid)
-                    
-                    def get_rank_grp(r):
-                        if not r: return 2
-                        ru = r.upper()
-                        if 'IRON' in ru or 'BRONZE' in ru: return 1
-                        if 'SILVER' in ru or 'GOLD' in ru: return 2
-                        if 'PLATINUM' in ru or 'DIAMOND' in ru: return 3
-                        if 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: return 4
-                        return 2
-                    p_groups[pid] = get_rank_grp(prank)
+                cursor.execute(f"SELECT id, name, riot_id, rank FROM players {rank_filter}", (f"%{rank}%",) if rank else ())
+                players_list = cursor.fetchall()
+                p_data = {r[0]: (r[1], r[2], r[3]) for r in players_list}
                 
-                # Fetch all stats
-                cursor.execute("""
-                    SELECT msm.player_id, msm.acs, msm.kills, msm.deaths, msm.adr, msm.kast
-                    FROM match_stats_map msm
-                    JOIN matches m ON msm.match_id = m.id
-                    WHERE m.status = 'completed'
-                    ORDER BY m.id ASC
-                """)
-                stats = cursor.fetchall()
-                
-                grp_totals = {1: [0,0], 2: [0,0], 3: [0,0], 4: [0,0]}
-                p_scores = {}
-                
-                for row in stats:
-                    pid, acs, kills, deaths, adr, kast = row
-                    kd = (kills / deaths) if deaths and deaths > 0 else kills
-                    raw_score = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
-                    
-                    # We need group avgs based on ALL players, even those not in filter
-                    # but for now we assume our 'players' list is everyone if no rank filter, 
-                    # actually we should fetch everyone's rank for grp_avgs
-                    # let's just do a quick second query or just assume the grp_avgs from the main loop
-                    # Optimization: fetch all player ranks once
-                    
-                # To be accurate we need ALL player ranks for group averages
-                cursor.execute("SELECT id, rank FROM players")
-                all_ranks = {r[0]: r[1] for r in cursor.fetchall()}
-                
-                for row in stats:
-                    pid, acs, kills, deaths, adr, kast = row
-                    grp = 2
-                    if pid in all_ranks:
-                        r = all_ranks[pid]
-                        ru = (r or "").upper()
-                        if 'IRON' in ru or 'BRONZE' in ru: grp = 1
-                        elif 'SILVER' in ru or 'GOLD' in ru: grp = 2
-                        elif 'PLATINUM' in ru or 'DIAMOND' in ru: grp = 3
-                        elif 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: grp = 4
-                    
-                    kd = (kills / deaths) if deaths and deaths > 0 else kills
-                    raw_score = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
-                    
-                    grp_totals[grp][0] += raw_score
-                    grp_totals[grp][1] += 1
-                    
-                    if pid in p_data: # only track scores for players we're interested in
-                        if pid not in p_scores: p_scores[pid] = []
-                        p_scores[pid].append(raw_score)
-
-                grp_avgs = {g: (v[0]/v[1] if v[1]>0 else 150) for g, v in grp_totals.items()}
+                p_history, _ = self._calculate_skipio_elos(cursor, season)
                 
                 final_leaderboard = []
-                for pid, scores in p_scores.items():
-                    if len(scores) < min_games: continue
+                for pid, history in p_history.items():
+                    if pid not in p_data: continue
+                    if len(history) < min_games: continue
                     
-                    elo = 1000
-                    my_grp = p_groups.get(pid, 2)
-                    my_avg = grp_avgs[my_grp]
-                    for s in scores:
-                        norm = (s / my_avg) * 100
-                        elo += (norm - 100) * 2
-                    
-                    name, rid, prank, uuid = p_data[pid]
+                    name, rid, prank = p_data[pid]
                     final_leaderboard.append({
-                        'id': pid, 'name': name, 'rid': rid, 'rank': prank, 
-                        'elo': elo, 'maps': len(scores)
+                        'name': name, 'rank': prank, 
+                        'elo': history[-1], 'maps': len(history)
                     })
                 
                 final_leaderboard.sort(key=lambda x: x['elo'], reverse=True)
@@ -912,8 +858,8 @@ class AnalyticsCog(commands.Cog):
                 return await interaction.followup.send("❌ No players found matching those criteria.")
 
             embed = discord.Embed(
-                title=f"🏆 Skipio ELO Leaderboard" + (f" · `{rank}`" if rank else ""),
-                description="Rank-relative performance indicator",
+                title=f"🏆 Skipio Leaderboard" + (f" · `{season}`" if season != 'all' else " · `All Time`"),
+                description=f"Filter: `{rank or 'All'}` · Min Maps: `{min_games}`",
                 color=V_BLUE
             )
             

@@ -1,4 +1,5 @@
 import { getSkipioLeaderboard, getSkipioTier } from '@/lib/data';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
 export const revalidate = 60; // Revalidate every minute
@@ -21,11 +22,17 @@ function getRankIcon(rank: string | null) {
 const RANK_TIERS = ["All", "Radiant", "Immortal", "Ascendant", "Diamond", "Platinum", "Gold", "Silver", "Bronze", "Iron"];
 
 export default async function SkipioLeaderboardPage(props: {
-  searchParams: Promise<{ rank?: string }>;
+  searchParams: Promise<{ rank?: string, season?: string }>;
 }) {
   const searchParams = await props.searchParams;
   const currentRank = searchParams.rank || "All";
-  const leaderboard = await getSkipioLeaderboard(currentRank);
+  const currentSeason = searchParams.season || "all";
+  
+  // Fetch seasons for the selector
+  const { data: seasons } = await supabase.from('seasons').select('id, name').order('id', { ascending: false });
+  const seasonOptions = [{ id: 'all', name: 'All Time' }, ...(seasons || [])];
+
+  const leaderboard = await getSkipioLeaderboard(currentRank, currentSeason);
 
   return (
     <div className="min-h-screen bg-val-bg text-white pb-20 pt-16">
@@ -49,22 +56,45 @@ export default async function SkipioLeaderboardPage(props: {
                 Your score rises when you outperform players at your own rank tier.
               </p>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <span className="font-display text-[10px] tracking-[0.2em] text-gray-500 uppercase">Filter by Rank</span>
-              <div className="flex flex-wrap gap-2 justify-end">
-                {RANK_TIERS.map(rank => (
-                  <Link
-                    key={rank}
-                    href={rank === "All" ? "/skipio" : `/skipio?rank=${rank}`}
-                    className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border transition-all ${
-                      currentRank === rank 
-                        ? "bg-val-red border-val-red text-white" 
-                        : "bg-white/5 border-white/10 text-gray-400 hover:border-white/30"
-                    }`}
-                  >
-                    {rank}
-                  </Link>
-                ))}
+            <div className="flex flex-col items-end gap-6 w-full md:w-auto">
+              {/* Season Selector */}
+              <div className="flex flex-col items-end gap-2 w-full md:w-auto">
+                <span className="font-display text-[10px] tracking-[0.2em] text-gray-500 uppercase">Season Context</span>
+                <div className="flex flex-wrap gap-2 justify-end">
+                  {seasonOptions.map(opt => (
+                    <Link
+                      key={opt.id}
+                      href={`/skipio?rank=${currentRank}&season=${opt.id}`}
+                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded border transition-all ${
+                        currentSeason === opt.id 
+                          ? "bg-val-blue border-val-blue text-white" 
+                          : "bg-white/5 border-white/10 text-gray-400 hover:border-white/30"
+                      }`}
+                    >
+                      {opt.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rank Filter */}
+              <div className="flex flex-col items-end gap-2">
+                <span className="font-display text-[10px] tracking-[0.2em] text-gray-500 uppercase">Filter by Rank</span>
+                <div className="flex flex-wrap gap-2 justify-end">
+                  {RANK_TIERS.map(rank => (
+                    <Link
+                      key={rank}
+                      href={`/skipio?rank=${rank}&season=${currentSeason}`}
+                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border transition-all ${
+                        currentRank === rank 
+                          ? "bg-val-red border-val-red text-white" 
+                          : "bg-white/5 border-white/10 text-gray-400 hover:border-white/30"
+                      }`}
+                    >
+                      {rank}
+                    </Link>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -85,10 +115,10 @@ export default async function SkipioLeaderboardPage(props: {
                   </tr>
                 </thead>
                 <tbody className="font-sans">
-                  {leaderboard.length === 0 ? (
+                  {!leaderboard || leaderboard.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                        No players found for rank "{currentRank}".
+                        No players found with at least 3 maps for "{currentRank}" in {currentSeason === 'all' ? 'All Seasons' : currentSeason}.
                       </td>
                     </tr>
                   ) : (
@@ -96,6 +126,10 @@ export default async function SkipioLeaderboardPage(props: {
                       const isTop3 = index < 3 && currentRank === "All";
                       const rankStr = (index + 1).toString();
                       const tier = getSkipioTier(entry.elo);
+                      
+                      // Calculate trend from last match
+                      const lastTwo = entry.progression.slice(-2);
+                      const diff = lastTwo.length === 2 ? lastTwo[1] - lastTwo[0] : 0;
                       
                       return (
                         <tr 
@@ -131,17 +165,27 @@ export default async function SkipioLeaderboardPage(props: {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className={`text-[10px] font-black uppercase tracking-[0.15em] px-2 py-1 rounded-sm bg-white/5 ${tier.color}`}>
-                              {tier.label}
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-[10px] font-black uppercase tracking-[0.15em] px-2 py-1 rounded-sm bg-white/5 ${tier.color}`}>
+                                {tier.label}
+                              </span>
+                              {diff !== 0 && (
+                                <span className={`text-[9px] font-mono font-bold ${diff > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {diff > 0 ? '↑' : '↓'} {Math.abs(diff)}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <span className={`
-                              font-display font-black text-lg tracking-wider
-                              ${isTop3 && index === 0 ? 'text-yellow-400' : 'text-val-blue'}
-                            `}>
-                              {entry.elo}
-                            </span>
+                            <div className="flex flex-col items-end">
+                              <span className={`
+                                font-display font-black text-lg tracking-wider
+                                ${isTop3 && index === 0 ? 'text-yellow-400' : 'text-val-blue'}
+                              `}>
+                                {entry.elo}
+                              </span>
+                              <span className="text-[9px] text-gray-500 font-mono">{entry.mapsPlayed} Maps</span>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -177,16 +221,16 @@ export default async function SkipioLeaderboardPage(props: {
               <h3 className="font-display font-bold text-sm uppercase tracking-widest mb-4 text-val-red">How it works</h3>
               <div className="text-[11px] text-gray-400 leading-relaxed space-y-3 font-sans">
                 <p>
-                  1. Every match appearance is scored using a weighted formula (ACS 40%, K/D 30%, ADR 20%, KAST 10%).
+                  1. Every match appearance is scored against both <strong>global rank averages</strong> and <strong>local match averages</strong>.
                 </p>
                 <p>
-                  2. Your score is compared to the <strong>average of all players in your rank tier</strong>.
+                  2. This blended approach ensures you are evaluated fairly, even in tactical or low-scoring matches.
                 </p>
                 <p>
-                  3. If you outperform your peers, your ELO rises from the 1000 baseline.
+                  3. Your ELO is an <strong>average</strong> of your performance, not a sum, making it volume-independent.
                 </p>
                 <p>
-                  4. The calculation includes <strong>all historical matches</strong> for a true career indicator.
+                  4. A minimum of <strong>3 maps</strong> is required to qualify for the leaderboard.
                 </p>
               </div>
             </div>
@@ -196,3 +240,4 @@ export default async function SkipioLeaderboardPage(props: {
     </div>
   );
 }
+

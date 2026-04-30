@@ -3134,6 +3134,7 @@ export type SkipioEntry = {
   mapsPlayed: number;
   avgRawScore: number;
   tier: string;
+  progression: number[];
 };
 
 export function getSkipioTier(elo: number): { label: string, color: string } {
@@ -3166,7 +3167,7 @@ export function calculateRawScore(acs: number, kd: number, adr: number, kast: nu
   return (acs * 0.40) + (kd * 30 * 0.30) + (adr * 0.20) + (kast * 0.10);
 }
 
-export async function getSkipioLeaderboard(rankFilter?: string): Promise<SkipioEntry[]> {
+export async function getSkipioLeaderboard(rankFilter?: string, seasonId?: string): Promise<SkipioEntry[]> {
   // --- STEP A: Fetch ALL players (for global rank-group averages) ---
   const { data: allPlayersRaw, error: apError } = await supabase
     .from('players')
@@ -3176,40 +3177,48 @@ export async function getSkipioLeaderboard(rankFilter?: string): Promise<SkipioE
   const allPlayerRankGrp = new Map<number, number>();
   allPlayersRaw.forEach(p => allPlayerRankGrp.set(p.id, getRankGroup(p.rank)));
 
-  // --- STEP B: Fetch all completed match stats (ALL players, for global averages) ---
+  // --- STEP B: Fetch all matches and stats separately to join in-memory ---
+  let matchQuery = supabase
+    .from('matches')
+    .select('id, status, season_id, week')
+    .eq('status', 'completed')
+    .order('id', { ascending: true }); // chronological
+
+  if (seasonId && seasonId !== 'all') {
+    matchQuery = matchQuery.eq('season_id', seasonId);
+  }
+
+  const { data: matches, error: mError } = await matchQuery;
+  if (mError || !matches) return [];
+
+  const matchIds = matches.map(m => m.id);
+  const matchMap = new Map(matches.map(m => [m.id, m]));
+
   const { data: stats, error: sError } = await supabase
     .from('match_stats_map')
-    .select('player_id, acs, kills, deaths, adr, kast, match_id, matches!inner(id, status)')
-    .eq('matches.status', 'completed');
+    .select('player_id, acs, kills, deaths, adr, kast, match_id')
+    .in('match_id', matchIds);
 
   if (sError || !stats) {
     console.error('Error fetching stats for Skipio:', sError);
     return [];
   }
 
-  // --- STEP C: Compute global rank-group averages (across all stats, all players) ---
+  // --- STEP C: Compute global rank-group averages ---
   const globalGroupTotals = { 1: { sum: 0, count: 0 }, 2: { sum: 0, count: 0 }, 3: { sum: 0, count: 0 }, 4: { sum: 0, count: 0 } };
-  
-  // Also build per-match rank-group score lists for lobby averages
-  // Key: `${matchId}_${rankGrp}` -> list of rawScores
   const lobbyGroupScores = new Map<string, number[]>();
-
-  // Temporary appearances list (includes all players for lobby calc)
-  type Appearance = { playerId: number; matchId: number; rawScore: number; rankGrp: number };
-  const allAppearances: Appearance[] = [];
+  const allAppearances: { playerId: number; matchId: number; rawScore: number; rankGrp: number }[] = [];
 
   stats.forEach((s: any) => {
     const pid = s.player_id;
-    const matchId = s.match_id ?? (s.matches as any)?.id;
+    const matchId = s.match_id;
     const rankGrp = allPlayerRankGrp.get(pid) ?? 2;
     const kd = (s.deaths ?? 0) > 0 ? s.kills / s.deaths : (s.kills ?? 0);
     const rawScore = calculateRawScore(s.acs || 0, kd, s.adr || 0, s.kast || 0);
 
-    // Global group accumulator
     globalGroupTotals[rankGrp as 1|2|3|4].sum += rawScore;
     globalGroupTotals[rankGrp as 1|2|3|4].count += 1;
 
-    // Lobby group accumulator
     const lobbyKey = `${matchId}_${rankGrp}`;
     if (!lobbyGroupScores.has(lobbyKey)) lobbyGroupScores.set(lobbyKey, []);
     lobbyGroupScores.get(lobbyKey)!.push(rawScore);
@@ -3224,28 +3233,29 @@ export async function getSkipioLeaderboard(rankFilter?: string): Promise<SkipioE
     4: globalGroupTotals[4].count > 0 ? globalGroupTotals[4].sum / globalGroupTotals[4].count : 150,
   };
 
-  // --- STEP D: Compute blended normalised score per appearance ---
-  // blended = 0.5 * globalNorm + 0.5 * lobbyNorm (fallback to globalNorm if alone in lobby)
-  const playerBlendedScores = new Map<number, number[]>();
+  // --- STEP D: Compute blended scores and progression ---
+  const playerBlendedHistory = new Map<number, number[]>();
+
+  // Sort appearances by match ID (chronological)
+  allAppearances.sort((a, b) => a.matchId - b.matchId);
 
   allAppearances.forEach(app => {
     const globalAvg = globalGroupAvgs[app.rankGrp as 1|2|3|4];
-
     const lobbyKey = `${app.matchId}_${app.rankGrp}`;
     const lobbyList = lobbyGroupScores.get(lobbyKey) ?? [];
     const lobbyAvg = lobbyList.length > 1
       ? lobbyList.reduce((a, b) => a + b, 0) / lobbyList.length
-      : globalAvg; // alone in lobby → pure global comparison
+      : globalAvg;
 
     const globalNorm = globalAvg > 0 ? (app.rawScore / globalAvg) * 100 : 100;
     const lobbyNorm  = lobbyAvg  > 0 ? (app.rawScore / lobbyAvg)  * 100 : 100;
     const blended = globalNorm * 0.5 + lobbyNorm * 0.5;
 
-    if (!playerBlendedScores.has(app.playerId)) playerBlendedScores.set(app.playerId, []);
-    playerBlendedScores.get(app.playerId)!.push(blended);
+    if (!playerBlendedHistory.has(app.playerId)) playerBlendedHistory.set(app.playerId, []);
+    playerBlendedHistory.get(app.playerId)!.push(blended);
   });
 
-  // --- STEP E: Fetch display players (potentially rank-filtered) ---
+  // --- STEP E: Fetch display players ---
   let playersQuery = supabase
     .from('players')
     .select('id, name, riot_id, rank, default_team_id, teams(tag)');
@@ -3260,22 +3270,24 @@ export async function getSkipioLeaderboard(rankFilter?: string): Promise<SkipioE
   const leaderboard: SkipioEntry[] = [];
 
   players.forEach(p => {
-    const blendedList = playerBlendedScores.get(p.id) ?? [];
+    const blendedList = playerBlendedHistory.get(p.id) ?? [];
     const mapsPlayed = blendedList.length;
+    if (mapsPlayed < MIN_MAPS) return;
 
-    // ELO = 1000 + (avgBlendedDiff * 20)  — volume-independent average
-    const avgBlended = mapsPlayed > 0
-      ? blendedList.reduce((a, b) => a + b, 0) / mapsPlayed
-      : 100;
-    const eloValue = Math.round(1000 + (avgBlended - 100) * 20);
+    // Progression: ELO after each match
+    const progression: number[] = [];
+    let runningSum = 0;
+    blendedList.forEach((score, idx) => {
+      runningSum += score;
+      const currentAvg = runningSum / (idx + 1);
+      progression.push(Math.round(1000 + (currentAvg - 100) * 20));
+    });
 
-    // Avg raw score for display purposes
+    const eloValue = progression[progression.length - 1];
     const playerAppearances = allAppearances.filter(a => a.playerId === p.id);
     const avgRaw = playerAppearances.length > 0
       ? playerAppearances.reduce((a, b) => a + b.rawScore, 0) / playerAppearances.length
       : 0;
-
-    if (mapsPlayed < MIN_MAPS) return; // skip players with not enough data
 
     leaderboard.push({
       playerId: p.id,
@@ -3287,9 +3299,11 @@ export async function getSkipioLeaderboard(rankFilter?: string): Promise<SkipioE
       mapsPlayed,
       avgRawScore: parseFloat(avgRaw.toFixed(1)),
       tier: getSkipioTier(eloValue).label,
+      progression
     });
   });
 
   return leaderboard.sort((a, b) => b.elo - a.elo);
 }
+
 

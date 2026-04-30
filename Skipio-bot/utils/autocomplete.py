@@ -67,3 +67,20 @@ async def match_autocomplete(interaction: discord.Interaction, current: str) -> 
 
 async def rank_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
     return _fetch_rank_choices(current)
+
+def _fetch_season_choices(query: str) -> List[app_commands.Choice[str]]:
+    try:
+        with get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name FROM seasons ORDER BY id DESC")
+            seasons = cursor.fetchall()
+            options = [app_commands.Choice(name="All Time", value="all")]
+            options.extend([app_commands.Choice(name=name, value=sid) for sid, name in seasons])
+            if query:
+                return [o for o in options if query.lower() in o.name.lower()][:25]
+            return options[:25]
+    except:
+        return [app_commands.Choice(name="All Time", value="all")]
+
+async def season_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    return await run_in_executor(_fetch_season_choices, current)
