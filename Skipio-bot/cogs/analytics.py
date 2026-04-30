@@ -673,6 +673,115 @@ class AnalyticsCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
 
+    # ── /elo ─────────────────────────────────────────────────────────────────
+    @app_commands.command(name="elo", description="Show a player's Skipio ELO rating")
+    @app_commands.describe(name="Player name or @mention")
+    @app_commands.autocomplete(name=player_autocomplete)
+    async def elo(self, interaction: discord.Interaction, name: str):
+        await interaction.response.defer()
+        try:
+            mention_match = re.match(r"^<@!?(\d+)>$", name.strip())
+            pid_match = re.match(r"^#(\d+)$", name.strip())
+            
+            with get_conn() as conn:
+                if not conn: return await interaction.followup.send("❌ DB Error.")
+                cursor = conn.cursor()
+                
+                # Identify player
+                if pid_match:
+                    cursor.execute("SELECT id, name, riot_id, rank, uuid FROM players WHERE id=%s", (pid_match.group(1),))
+                elif mention_match:
+                    cursor.execute("SELECT id, name, riot_id, rank, uuid FROM players WHERE uuid=%s", (mention_match.group(1),))
+                else:
+                    cursor.execute("SELECT id, name, riot_id, rank, uuid FROM players WHERE name ILIKE %s OR riot_id ILIKE %s", (name, name))
+                
+                player = cursor.fetchone()
+                if not player:
+                    return await interaction.followup.send(f"❌ Player not found.")
+                
+                p_id, p_name, p_riot, p_rank, p_uuid = player
+                
+                # Fetch all players and their rank groups to calc group averages
+                cursor.execute("SELECT id, rank FROM players")
+                all_players = cursor.fetchall()
+                
+                def get_rank_grp(r):
+                    if not r: return 2
+                    ru = r.upper()
+                    if 'IRON' in ru or 'BRONZE' in ru: return 1
+                    if 'SILVER' in ru or 'GOLD' in ru: return 2
+                    if 'PLATINUM' in ru or 'DIAMOND' in ru: return 3
+                    if 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: return 4
+                    return 2
+                
+                p_groups = {row[0]: get_rank_grp(row[1]) for row in all_players}
+                
+                # Fetch all match stats
+                cursor.execute("""
+                    SELECT msm.player_id, msm.acs, msm.kills, msm.deaths, msm.adr, msm.kast
+                    FROM match_stats_map msm
+                    JOIN matches m ON msm.match_id = m.id
+                    WHERE m.status = 'completed'
+                    ORDER BY m.id ASC
+                """)
+                stats = cursor.fetchall()
+                
+                # Calculate group averages
+                grp_totals = {1: [0,0], 2: [0,0], 3: [0,0], 4: [0,0]}
+                p_scores = {}
+                
+                for row in stats:
+                    pid, acs, kills, deaths, adr, kast = row
+                    kd = (kills / deaths) if deaths and deaths > 0 else kills
+                    raw_score = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
+                    
+                    grp = p_groups.get(pid, 2)
+                    grp_totals[grp][0] += raw_score
+                    grp_totals[grp][1] += 1
+                    
+                    if pid not in p_scores: p_scores[pid] = []
+                    p_scores[pid].append(raw_score)
+                
+                grp_avgs = {g: (v[0]/v[1] if v[1]>0 else 150) for g, v in grp_totals.items()}
+                
+                # Calculate ELO for this player only
+                elo = 1000
+                maps_played = 0
+                avg_raw = 0
+                
+                if p_id in p_scores:
+                    my_grp = p_groups.get(p_id, 2)
+                    my_avg = grp_avgs[my_grp]
+                    
+                    for s in p_scores[p_id]:
+                        norm = (s / my_avg) * 100
+                        change = (norm - 100) * 2
+                        elo += change
+                        
+                    maps_played = len(p_scores[p_id])
+                    avg_raw = sum(p_scores[p_id]) / maps_played
+                
+            embed = discord.Embed(
+                title=f"⚡ Skipio ELO Rating",
+                color=V_BLUE
+            )
+            embed.add_field(name="Player", value=f"**{p_name}** `{p_riot}`\n{_rank_icon(p_rank)} `{p_rank or 'Unranked'}`", inline=True)
+            embed.add_field(name="Current ELO", value=f"## {round(elo)}", inline=True)
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embed.add_field(name="Maps Played", value=f"`{maps_played}`", inline=True)
+            embed.add_field(name="Avg Raw Score", value=f"`{round(avg_raw, 1)}`", inline=True)
+            embed.add_field(name="Rank Tier", value=f"`Group {p_groups.get(p_id, 2)}`", inline=True)
+            
+            embed.set_footer(text="ELO starts at 1000. Rises when you outperform your rank peers.")
+            
+            avatar = await _fetch_discord_avatar(self.bot, p_uuid)
+            if avatar:
+                embed.set_thumbnail(url=avatar)
+                
+            await interaction.followup.send(embed=embed)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: {str(e)}")
+
 
 async def setup(bot):
     await bot.add_cog(AnalyticsCog(bot))
