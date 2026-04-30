@@ -3133,7 +3133,17 @@ export type SkipioEntry = {
   elo: number;
   mapsPlayed: number;
   avgRawScore: number;
+  tier: string;
 };
+
+export function getSkipioTier(elo: number): { label: string, color: string } {
+  if (elo >= 1400) return { label: 'Godlike', color: 'text-orange-500' };
+  if (elo >= 1200) return { label: 'Elite', color: 'text-val-blue' };
+  if (elo >= 1050) return { label: 'Strong', color: 'text-green-500' };
+  if (elo >= 950) return { label: 'Baseline', color: 'text-gray-300' };
+  if (elo >= 850) return { label: 'Below Average', color: 'text-orange-300' };
+  return { label: 'Struggling', color: 'text-red-500' };
+}
 
 const RANK_GROUPS: Record<string, number> = {
   'Iron': 1, 'Bronze': 1,
@@ -3156,11 +3166,17 @@ export function calculateRawScore(acs: number, kd: number, adr: number, kast: nu
   return (acs * 0.40) + (kd * 30 * 0.30) + (adr * 0.20) + (kast * 0.10);
 }
 
-export async function getSkipioLeaderboard(): Promise<SkipioEntry[]> {
+export async function getSkipioLeaderboard(rankFilter?: string): Promise<SkipioEntry[]> {
   // A. Fetch all players
-  const { data: players, error: pError } = await supabase
+  let query = supabase
     .from('players')
     .select('id, name, riot_id, rank, default_team_id, teams(tag)');
+
+  if (rankFilter && rankFilter !== 'All') {
+    query = query.ilike('rank', `%${rankFilter}%`);
+  }
+    
+  const { data: players, error: pError } = await query;
     
   if (pError || !players) {
     console.error('Error fetching players for Skipio:', pError);
@@ -3240,6 +3256,7 @@ export async function getSkipioLeaderboard(): Promise<SkipioEntry[]> {
     const pData = playerRawScores.get(p.id)!;
     const mapsPlayed = pData.scores.length;
     const avgRawScore = mapsPlayed > 0 ? pData.scores.reduce((a, b) => a + b, 0) / mapsPlayed : 0;
+    const eloValue = Math.round(elos.get(p.id) || 1000);
     
     return {
       playerId: p.id,
@@ -3247,9 +3264,10 @@ export async function getSkipioLeaderboard(): Promise<SkipioEntry[]> {
       riotId: p.riot_id,
       rank: p.rank || 'Unranked',
       team: p.teams ? (p.teams as any).tag : 'FA',
-      elo: Math.round(elos.get(p.id) || 1000),
+      elo: eloValue,
       mapsPlayed,
-      avgRawScore: parseFloat(avgRawScore.toFixed(1))
+      avgRawScore: parseFloat(avgRawScore.toFixed(1)),
+      tier: getSkipioTier(eloValue).label
     };
   });
 

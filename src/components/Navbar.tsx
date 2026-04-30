@@ -18,6 +18,7 @@ const mainNavItems = [
 ];
 
 const moreNavItems = [
+    { name: "Skipio ELO", href: "/skipio" },
     { name: "Match Summary", href: "/summary" },
     { name: "Subs", href: "/substitutions" },
     { name: "Predictions", href: "/predictions" },

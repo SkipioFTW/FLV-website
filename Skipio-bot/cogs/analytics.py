@@ -761,13 +761,21 @@ class AnalyticsCog(commands.Cog):
                     maps_played = len(p_scores[p_id])
                     avg_raw = sum(p_scores[p_id]) / maps_played
                 
+            def get_tier(e):
+                if e >= 1400: return "🔥 Godlike"
+                if e >= 1200: return "💎 Elite"
+                if e >= 1050: return "🟢 Strong"
+                if e >= 950:  return "⚪ Baseline"
+                if e >= 850:  return "🟠 Below Average"
+                return "🔴 Struggling"
+
             embed = discord.Embed(
                 title=f"⚡ Skipio ELO Rating",
                 color=V_BLUE
             )
             embed.add_field(name="Player", value=f"**{p_name}** `{p_riot}`\n{_rank_icon(p_rank)} `{p_rank or 'Unranked'}`", inline=True)
             embed.add_field(name="Current ELO", value=f"## {round(elo)}", inline=True)
-            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embed.add_field(name="Performance", value=f"**{get_tier(elo)}**", inline=True)
             embed.add_field(name="Maps Played", value=f"`{maps_played}`", inline=True)
             embed.add_field(name="Avg Raw Score", value=f"`{round(avg_raw, 1)}`", inline=True)
             embed.add_field(name="Rank Tier", value=f"`Group {p_groups.get(p_id, 2)}`", inline=True)
@@ -778,6 +786,130 @@ class AnalyticsCog(commands.Cog):
             if avatar:
                 embed.set_thumbnail(url=avatar)
                 
+            await interaction.followup.send(embed=embed)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: {str(e)}")
+
+    # ── /skipio-leaderboard ──────────────────────────────────────────────────
+    @app_commands.command(name="skipio-leaderboard", description="Show top players by Skipio ELO rating")
+    @app_commands.describe(rank="Filter by rank tier", min_games="Min maps played")
+    @app_commands.autocomplete(rank=rank_autocomplete)
+    async def skipio_leaderboard(self, interaction: discord.Interaction, rank: str = None, min_games: int = 3):
+        await interaction.response.defer()
+        try:
+            with get_conn() as conn:
+                if not conn: return await interaction.followup.send("❌ DB Error.")
+                cursor = conn.cursor()
+                
+                # Fetch players
+                rank_filter = "WHERE rank ILIKE %s" if rank else ""
+                cursor.execute(f"SELECT id, name, riot_id, rank, uuid FROM players {rank_filter}", (f"%{rank}%",) if rank else ())
+                players = cursor.fetchall()
+                p_groups = {}
+                p_data = {}
+                for row in players:
+                    pid, name, rid, prank, uuid = row
+                    p_data[pid] = (name, rid, prank, uuid)
+                    
+                    def get_rank_grp(r):
+                        if not r: return 2
+                        ru = r.upper()
+                        if 'IRON' in ru or 'BRONZE' in ru: return 1
+                        if 'SILVER' in ru or 'GOLD' in ru: return 2
+                        if 'PLATINUM' in ru or 'DIAMOND' in ru: return 3
+                        if 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: return 4
+                        return 2
+                    p_groups[pid] = get_rank_grp(prank)
+                
+                # Fetch all stats
+                cursor.execute("""
+                    SELECT msm.player_id, msm.acs, msm.kills, msm.deaths, msm.adr, msm.kast
+                    FROM match_stats_map msm
+                    JOIN matches m ON msm.match_id = m.id
+                    WHERE m.status = 'completed'
+                    ORDER BY m.id ASC
+                """)
+                stats = cursor.fetchall()
+                
+                grp_totals = {1: [0,0], 2: [0,0], 3: [0,0], 4: [0,0]}
+                p_scores = {}
+                
+                for row in stats:
+                    pid, acs, kills, deaths, adr, kast = row
+                    kd = (kills / deaths) if deaths and deaths > 0 else kills
+                    raw_score = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
+                    
+                    # We need group avgs based on ALL players, even those not in filter
+                    # but for now we assume our 'players' list is everyone if no rank filter, 
+                    # actually we should fetch everyone's rank for grp_avgs
+                    # let's just do a quick second query or just assume the grp_avgs from the main loop
+                    # Optimization: fetch all player ranks once
+                    
+                # To be accurate we need ALL player ranks for group averages
+                cursor.execute("SELECT id, rank FROM players")
+                all_ranks = {r[0]: r[1] for r in cursor.fetchall()}
+                
+                for row in stats:
+                    pid, acs, kills, deaths, adr, kast = row
+                    grp = 2
+                    if pid in all_ranks:
+                        r = all_ranks[pid]
+                        ru = (r or "").upper()
+                        if 'IRON' in ru or 'BRONZE' in ru: grp = 1
+                        elif 'SILVER' in ru or 'GOLD' in ru: grp = 2
+                        elif 'PLATINUM' in ru or 'DIAMOND' in ru: grp = 3
+                        elif 'ASCENDANT' in ru or 'IMMORTAL' in ru or 'RADIANT' in ru: grp = 4
+                    
+                    kd = (kills / deaths) if deaths and deaths > 0 else kills
+                    raw_score = ((acs or 0)*0.40) + (kd*30*0.30) + ((adr or 0)*0.20) + ((kast or 0)*0.10)
+                    
+                    grp_totals[grp][0] += raw_score
+                    grp_totals[grp][1] += 1
+                    
+                    if pid in p_data: # only track scores for players we're interested in
+                        if pid not in p_scores: p_scores[pid] = []
+                        p_scores[pid].append(raw_score)
+
+                grp_avgs = {g: (v[0]/v[1] if v[1]>0 else 150) for g, v in grp_totals.items()}
+                
+                final_leaderboard = []
+                for pid, scores in p_scores.items():
+                    if len(scores) < min_games: continue
+                    
+                    elo = 1000
+                    my_grp = p_groups.get(pid, 2)
+                    my_avg = grp_avgs[my_grp]
+                    for s in scores:
+                        norm = (s / my_avg) * 100
+                        elo += (norm - 100) * 2
+                    
+                    name, rid, prank, uuid = p_data[pid]
+                    final_leaderboard.append({
+                        'id': pid, 'name': name, 'rid': rid, 'rank': prank, 
+                        'elo': elo, 'maps': len(scores)
+                    })
+                
+                final_leaderboard.sort(key=lambda x: x['elo'], reverse=True)
+                top_10 = final_leaderboard[:10]
+                
+            if not top_10:
+                return await interaction.followup.send("❌ No players found matching those criteria.")
+
+            embed = discord.Embed(
+                title=f"🏆 Skipio ELO Leaderboard" + (f" · `{rank}`" if rank else ""),
+                description="Rank-relative performance indicator",
+                color=V_BLUE
+            )
+            
+            medals = ["🥇","🥈","🥉"]
+            for i, p in enumerate(top_10, 1):
+                medal = medals[i-1] if i <= 3 else f"`{i}.`"
+                embed.add_field(
+                    name=f"{medal} {p['name']}  {_rank_icon(p['rank'])} `{p['rank'] or '—'}`",
+                    value=f"ELO: **{round(p['elo'])}**  ·  Maps: `{p['maps']}`",
+                    inline=False
+                )
+            
             await interaction.followup.send(embed=embed)
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
