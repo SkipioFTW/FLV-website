@@ -20,7 +20,7 @@ const SLIDE_LABELS: Record<Slide, string> = {
 const SLIDE_DURATION = 10000; // 10 seconds
 
 function pct(n: number) {
-  return `${n.toFixed(1)}%`;
+  return `${(n*100).toFixed(1)}%`;
 }
 
 function StatCompare({ label, v1, v2, format = "pct" }: { label: string; v1: number; v2: number; format?: "pct" | "num" }) {
