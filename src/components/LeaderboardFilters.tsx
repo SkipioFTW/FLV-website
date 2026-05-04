@@ -23,12 +23,14 @@ export default function LeaderboardFilters({
 }) {
     const [minGames, setMinGames] = useState(0);
     const [selectedRank, setSelectedRank] = useState<string>('All');
+    const [selectedRole, setSelectedRole] = useState<string>('All Roles');
     const [sortConfig, setSortConfig] = useState<{ key: keyof LeaderboardPlayer; direction: 'asc' | 'desc' }>({
         key: 'avg_acs',
         direction: 'desc'
     });
 
     const ranks = ["All", "Immortal 3/Radiant", "Immortal 1/2", "Ascendant", "Diamond", "Platinum", "Gold", "Silver", "Iron/Bronze", "Unranked"];
+    const roles = ["All Roles", "Duelist", "Initiator", "Sentinel", "Controller"];
 
     const handleSort = (key: keyof LeaderboardPlayer) => {
         setSortConfig((current) => ({
@@ -37,11 +39,13 @@ export default function LeaderboardFilters({
         }));
     };
 
-    const filteredByRank = selectedRank === 'All'
-        ? players
-        : players.filter(p => p.rank === selectedRank);
+    const filteredPlayersList = players.filter(p => {
+        const rankMatch = selectedRank === 'All' || p.rank === selectedRank;
+        const roleMatch = selectedRole === 'All Roles' || p.role === selectedRole;
+        return rankMatch && roleMatch;
+    });
 
-    const sortedPlayers = [...filteredByRank]
+    const sortedPlayers = [...filteredPlayersList]
         .filter((p) => p.matches_played >= minGames)
         .sort((a, b) => {
             const aValue = a[sortConfig.key];
@@ -103,6 +107,22 @@ export default function LeaderboardFilters({
                     </button>
                 ))}
             </div>
+            
+            {/* Role Selection Tabs */}
+            <div className="mb-8 flex flex-wrap gap-2 justify-center">
+                {roles.map((role) => (
+                    <button
+                        key={role}
+                        onClick={() => setSelectedRole(role)}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${selectedRole === role
+                            ? 'bg-val-blue border-val-blue text-white shadow-[0_0_20px_rgba(63,209,255,0.3)]'
+                            : 'bg-white/5 border-white/10 text-foreground/40 hover:text-foreground hover:border-white/20'
+                            }`}
+                    >
+                        {role}
+                    </button>
+                ))}
+            </div>
 
             {/* Podium Section */}
             <LeaderboardPodium topPlayers={topThree} />
@@ -137,6 +157,7 @@ export default function LeaderboardFilters({
                         <tr>
                             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest text-foreground/60">Rank</th>
                             <SortHeader label="Player" sortKey="name" align="left" />
+                            <SortHeader label="Role" sortKey="role" />
                             <SortHeader label="Peak Rank" sortKey="rank" />
                             <SortHeader label="Team" sortKey="team" />
                             <SortHeader label="Matches" sortKey="matches_played" />
@@ -169,6 +190,20 @@ export default function LeaderboardFilters({
                                                 <div className="font-bold text-sm text-foreground">{player.name}</div>
                                                 <div className="text-[10px] text-foreground/40 uppercase tracking-tighter">{player.riot_id}</div>
                                             </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-4 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded mb-1 ${
+                                                player.role === 'Duelist' ? 'text-red-400 bg-red-400/10' :
+                                                player.role === 'Initiator' ? 'text-yellow-400 bg-yellow-400/10' :
+                                                player.role === 'Sentinel' ? 'text-gray-300 bg-gray-400/10' :
+                                                player.role === 'Controller' ? 'text-purple-400 bg-purple-400/10' :
+                                                'text-foreground/60 bg-white/5'
+                                            }`}>
+                                                {player.role || 'Flex'}
+                                            </span>
+                                            <span className="text-[8px] text-foreground/40 uppercase tracking-widest">{player.mostPlayedAgent}</span>
                                         </div>
                                     </td>
                                     <td className="px-4 py-4 text-center">
@@ -206,7 +241,7 @@ export default function LeaderboardFilters({
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={11} className="px-6 py-20 text-center">
+                                <td colSpan={12} className="px-6 py-20 text-center">
                                     <h4 className="text-foreground/80 font-bold mb-2">No players found</h4>
                                     <p className="text-foreground/40 text-xs italic">
                                         No matches have been played in this category for the selected season yet.
@@ -237,6 +272,13 @@ export default function LeaderboardFilters({
                             </div>
                             <span className="inline-block px-3 py-1 rounded-full bg-val-red/10 text-val-red text-[10px] font-black uppercase tracking-wider">
                                 {player.team}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-4">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-foreground/40">Role:</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-foreground/80 bg-white/5 px-2 py-1 rounded">
+                                {player.role || 'Flex'} ({player.mostPlayedAgent || 'Unknown'})
                             </span>
                         </div>
 

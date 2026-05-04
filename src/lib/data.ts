@@ -42,6 +42,28 @@ export async function getSeasons(): Promise<{ id: string, name: string, is_activ
     }
 }
 
+export const AGENT_ROLES = {
+    duelist: ["Jett", "Phoenix", "Raze", "Reyna", "Yoru", "Neon", "Iso", "Waylay"],
+    initiator: ["Sova", "Breach", "Skye", "KAY/O", "Fade", "Gekko", "Tejo"],
+    sentinel: ["Sage", "Cypher", "Killjoy", "Chamber", "Deadlock", "Vyse", "Veto"],
+    controller: ["Brimstone", "Viper", "Omen", "Astra", "Harbor", "Clove", "Miks"]
+};
+
+export function determineArchetype(mostPlayedAgent: string | null | undefined): string {
+    if (!mostPlayedAgent) return "Flex";
+    
+    const agent = mostPlayedAgent.toLowerCase();
+    for (const [role, agents] of Object.entries(AGENT_ROLES)) {
+        if (agents.map(a => a.toLowerCase()).includes(agent)) {
+            if (role === "duelist") return "Duelist";
+            if (role === "initiator") return "Initiator";
+            if (role === "sentinel") return "Sentinel";
+            if (role === "controller") return "Controller";
+        }
+    }
+    return "Flex";
+}
+
 export type StandingsRow = {
     id: number;
     name: string;
@@ -103,6 +125,8 @@ export type LeaderboardPlayer = {
     avg_hs_pct: number;
     total_fk: number;
     rank: string;
+    mostPlayedAgent?: string;
+    role?: string;
 };
 
 export type PlayerStats = {
@@ -428,11 +452,22 @@ export type TeamPerformance = {
         avgAdr?: number;
         avgKast?: number;
         matches: number;
+        mostPlayedAgent?: string;
     }[];
     maps: {
         name: string;
         wins: number;
         losses: number;
+    }[];
+    agents: {
+        name: string;
+        count: number;
+    }[];
+    recentMatches: {
+        week: number;
+        opponent: string;
+        result: 'win' | 'loss' | 'draw';
+        score: string;
     }[];
     summary: {
         pistolWinRate: number;
@@ -714,7 +749,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
         while (true) {
             const { data, error } = await supabase
                 .from('match_stats_map')
-                .select('player_id, acs, kills, deaths, assists, match_id, adr, kast, hs_pct, fk')
+                .select('player_id, acs, kills, deaths, assists, match_id, adr, kast, hs_pct, fk, agent')
                 .order('id')
                 .range(sFrom, sFrom + sLimit - 1);
 
@@ -739,6 +774,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
             matchIds: Set<number>;
             mapCount: number;
             enhancedMapCount: number; // for adr/kast/hs which might be null for some old matches
+            agentCounts: Map<string, number>;
         }>();
 
         allStats.forEach((stat) => {
@@ -757,6 +793,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                 matchIds: new Set<number>(),
                 mapCount: 0,
                 enhancedMapCount: 0,
+                agentCounts: new Map<string, number>(),
             };
 
             existing.totalAcs += stat.acs || 0;
@@ -774,11 +811,15 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                 existing.enhancedMapCount += 1;
             }
 
+            if (stat.agent) {
+                existing.agentCounts.set(stat.agent, (existing.agentCounts.get(stat.agent) || 0) + 1);
+            }
+
             playerStatsMap.set(stat.player_id, existing);
         });
 
         // 5. Build leaderboard
-        const leaderboard: LeaderboardPlayer[] = players
+        const leaderboard = players
             .map((player) => {
                 const pStats = playerStatsMap.get(player.id);
                 const matchCount = pStats?.matchIds.size || 0;
@@ -786,6 +827,10 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                 if (!pStats || matchCount < minGames) return null;
 
                 const teamTag = player.default_team_id ? teamMap.get(player.default_team_id) || 'N/A' : 'N/A';
+
+                const mostPlayedAgent = Array.from(pStats.agentCounts.entries())
+                    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unknown';
+                const role = determineArchetype(mostPlayedAgent);
 
                 return {
                     id: player.id,
@@ -803,10 +848,13 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
                     avg_hs_pct: pStats.enhancedMapCount > 0 ? Math.round(pStats.totalHsPct / pStats.enhancedMapCount) : 0,
                     total_fk: pStats.totalFk,
                     rank: player.rank || 'Unranked',
+                    mostPlayedAgent,
+                    role,
                 };
             })
-            .filter((p): p is LeaderboardPlayer => p !== null)
-            .sort((a, b) => b.avg_acs - a.avg_acs);
+            .filter((p) => p !== null) as LeaderboardPlayer[];
+        
+        leaderboard.sort((a, b) => b.avg_acs - a.avg_acs);
 
         return leaderboard;
     } catch (error) {
@@ -1417,7 +1465,6 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
         }
 
         const { data: matches, error: matchesError } = await matchQuery;
-
         if (matchesError) throw matchesError;
 
         const matchIds = (matches || []).map(m => m.id);
@@ -1430,6 +1477,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
                 progression: [],
                 playerStats: [],
                 maps: [],
+                agents: [],
+                recentMatches: [],
                 summary: {
                     pistolWinRate: 0,
                     roundWinRate: 0,
@@ -1440,14 +1489,15 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
         }
 
         // 3. Fetch match maps, stats, players and rounds
-        const [mapsRes, statsRes, playersRes, roundsRes] = await Promise.all([
+        const [mapsRes, statsRes, playersRes, roundsRes, teamsRes] = await Promise.all([
             supabase.from('match_maps').select('*').in('match_id', matchIds),
             supabase
                 .from('match_stats_map')
                 .select('match_id,map_index,team_id,player_id,acs,kills,deaths,assists,agent,is_sub,subbed_for_id,adr,kast')
                 .in('match_id', matchIds),
             supabase.from('players').select('id,name,default_team_id'),
-            supabase.from('match_rounds').select('*').in('match_id', matchIds)
+            supabase.from('match_rounds').select('*').in('match_id', matchIds),
+            supabase.from('teams').select('id,name')
         ]);
 
         if (mapsRes.error) throw mapsRes.error;
@@ -1553,19 +1603,35 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
         (playersRes.data || []).forEach((p: any) => {
             playerLookup.set(p.id, { name: p.name, default_team_id: p.default_team_id ?? null });
         });
-
-        const pStats = new Map<number, { name: string, acs: number[], adr: number[], kast: number[], kills: number, deaths: number, matches: Set<number> }>();
+        const pStats = new Map<number, { name: string, acs: number[], adr: number[], kast: number[], kills: number, deaths: number, matches: Set<number>, agentCounts: Map<string, number> }>();
         (statsRes.data || []).forEach((s: any) => {
+            // Only count if it's the team being analyzed
+            if (s.team_id !== teamId) return;
+
             const pInfo = playerLookup.get(s.player_id);
             const playerName = pInfo?.name || 'Unknown';
 
-            const current = pStats.get(s.player_id) || { name: playerName, acs: [] as number[], adr: [] as number[], kast: [] as number[], kills: 0, deaths: 0, matches: new Set<number>() };
+            const current = pStats.get(s.player_id) || { 
+                name: playerName, 
+                acs: [] as number[], 
+                adr: [] as number[], 
+                kast: [] as number[], 
+                kills: 0, 
+                deaths: 0, 
+                matches: new Set<number>(),
+                agentCounts: new Map<string, number>()
+            };
             current.acs.push(s.acs || 0);
             current.adr.push(s.adr || 0);
             current.kast.push(s.kast || 0);
             current.kills += s.kills || 0;
             current.deaths += s.deaths || 0;
             current.matches.add(s.match_id);
+            
+            if (s.agent) {
+                current.agentCounts.set(s.agent, (current.agentCounts.get(s.agent) || 0) + 1);
+            }
+            
             pStats.set(s.player_id, current);
         });
         // Filter by roster
@@ -1576,13 +1642,17 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             .map(([id, data]) => {
                 const acsAvg = data.acs.length > 0 ? Math.round(data.acs.reduce((a, b) => a + b, 0) / data.acs.length) : 0;
                 const kdVal = data.deaths > 0 ? parseFloat((data.kills / data.deaths).toFixed(2)) : data.kills;
+                const mostPlayed = Array.from(data.agentCounts.entries())
+                    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unknown';
+
                 return {
                     name: data.name,
                     avgAcs: acsAvg,
                     kd: kdVal,
                     avgAdr: data.adr.length > 0 ? Math.round(data.adr.reduce((a: number, b: number) => a + b, 0) / data.adr.length) : 0,
                     avgKast: data.kast.length > 0 ? Math.round(data.kast.reduce((a: number, b: number) => a + b, 0) / data.kast.length) : 0,
-                    matches: data.matches.size
+                    matches: data.matches.size,
+                    mostPlayedAgent: mostPlayed
                 };
             })
             .sort((a, b) => b.avgAcs - a.avgAcs);
@@ -1602,6 +1672,45 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             }
         });
 
+        // 8. Scouting Data (Agents & Recent Matches)
+        const agentCounts = new Map<string, number>();
+        (statsRes.data || []).forEach((s: any) => {
+            if (s.agent) {
+                agentCounts.set(s.agent, (agentCounts.get(s.agent) || 0) + 1);
+            }
+        });
+        const agents = Array.from(agentCounts.entries())
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        const teamNameLookup = new Map<number, string>();
+        (teamsRes.data || []).forEach((t: any) => teamNameLookup.set(t.id, t.name));
+
+        const recentMatches = (matches || [])
+            .sort((a, b) => (b.week || 0) - (a.week || 0))
+            .slice(0, 5)
+            .map(m => {
+                const isT1 = m.team1_id === teamId;
+                const opponentId = isT1 ? m.team2_id : m.team1_id;
+                const fallbackRounds = roundsByMatch.get(m.id) || { t1: 0, t2: 0 };
+                const myRounds = (isT1 ? fallbackRounds.t1 : fallbackRounds.t2) || 0;
+                const opRounds = (isT1 ? fallbackRounds.t2 : fallbackRounds.t1) || 0;
+
+                let result: 'win' | 'loss' | 'draw' = 'draw';
+                if (m.winner_id === teamId) result = 'win';
+                else if (m.winner_id && m.winner_id !== teamId) result = 'loss';
+                else if (myRounds > opRounds) result = 'win';
+                else if (opRounds > myRounds) result = 'loss';
+
+                return {
+                    week: m.week || 0,
+                    opponent: teamNameLookup.get(opponentId) || 'Unknown',
+                    result,
+                    score: `${myRounds} - ${opRounds}`
+                };
+            });
+
         return {
             id: team.id,
             name: team.name,
@@ -1610,6 +1719,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             progression,
             playerStats,
             maps,
+            agents,
+            recentMatches,
             summary: {
                 pistolWinRate: totalPistols > 0 ? Math.round((pistolWins / totalPistols) * 100) : 0,
                 roundWinRate: totalRounds > 0 ? Math.round((roundsWon / totalRounds) * 100) : 0,
@@ -1627,6 +1738,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             progression: [],
             playerStats: [],
             maps: [],
+            agents: [],
+            recentMatches: [],
             summary: {
                 pistolWinRate: 0,
                 roundWinRate: 0,

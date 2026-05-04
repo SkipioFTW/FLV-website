@@ -6,12 +6,24 @@ async def run_in_executor(func, *args):
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, functools.partial(func, *args))
 
-def determine_archetype(fk: int, matches: int, kast: float, assists: int) -> str:
-    """Algorithm to assign a player archetype based on stats."""
-    maps_played = max(matches, 1)
-    if (fk / maps_played) > 2.0 and kast > 70:
-        return "⚔️ Entry Duelist"
-    elif (assists / maps_played) > 5.0:
-        return "🛡️ Support/Initiator"
-    else:
+AGENT_ROLES = {
+    "duelist": ["Jett", "Phoenix", "Raze", "Reyna", "Yoru", "Neon", "Iso", "Waylay"],
+    "initiator": ["Sova", "Breach", "Skye", "KAY/O", "Fade", "Gekko", "Tejo"],
+    "sentinel": ["Sage", "Cypher", "Killjoy", "Chamber", "Deadlock", "Vyse", "Veto"],
+    "controller": ["Brimstone", "Viper", "Omen", "Astra", "Harbor", "Clove", "Miks"]
+}
+
+def determine_archetype(most_played_agent: str) -> str:
+    """Algorithm to assign a player archetype based on most played agent."""
+    if not most_played_agent:
         return "🧩 Flex"
+    
+    agent = most_played_agent.lower()
+    for role, agents in AGENT_ROLES.items():
+        if agent in [a.lower() for a in agents]:
+            if role == "duelist": return "⚔️ Duelist"
+            if role == "initiator": return "🏹 Initiator"
+            if role == "sentinel": return "🛡️ Sentinel"
+            if role == "controller": return "💨 Controller"
+            
+    return "🧩 Flex"

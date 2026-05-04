@@ -123,76 +123,246 @@ class AnalyticsCog(commands.Cog):
 
         return player_history, appearances
 
+    # ── /scout ───────────────────────────────────────────────────────────────
+    @app_commands.command(name="scout", description="Get a scouting report for a team (Meta & Stats)")
+    @app_commands.describe(team="Team name or tag", season="Season ID")
+    @app_commands.autocomplete(team=team_autocomplete, season=season_autocomplete)
+    async def scout(self, interaction: discord.Interaction, team: str, season: str = None):
+        await interaction.response.defer()
+        if season is None: season = await run_in_executor(get_default_season)
+        try:
+            with get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, name, tag, group_name FROM teams WHERE name ILIKE %s OR tag ILIKE %s LIMIT 1", (team, team))
+                row = cursor.fetchone()
+                if not row:
+                    return await interaction.followup.send(f"❌ Team `{team}` not found.")
+                tid, tname, ttag, tgroup = row
+                
+                sf = "(m.season_id = %s OR (m.season_id IS NULL AND %s = 'S23'))" if season != 'all' else "1=1"
+                
+                # Fetch Maps
+                cursor.execute(f"""
+                    SELECT mm.map_name, 
+                           CASE WHEN m.team1_id = %s THEN mm.team1_rounds ELSE mm.team2_rounds END as my_rounds,
+                           CASE WHEN m.team1_id = %s THEN mm.team2_rounds ELSE mm.team1_rounds END as op_rounds
+                    FROM match_maps mm
+                    JOIN matches m ON mm.match_id = m.id
+                    WHERE (m.team1_id = %s OR m.team2_id = %s) AND m.status = 'completed' AND {sf}
+                """, (tid, tid, tid, tid, season, season) if season != 'all' else (tid, tid, tid, tid))
+                maps_data = cursor.fetchall()
+                
+                # Fetch Roster
+                cursor.execute("SELECT id, name FROM players WHERE default_team_id = %s", (tid,))
+                roster = cursor.fetchall()
+                
+                # Fetch Per-Player Agents (Comfort Picks)
+                player_best = []
+                if roster:
+                    for pid, pname in roster:
+                        cursor.execute(f"""
+                            SELECT agent, COUNT(*) as c
+                            FROM match_stats_map msm
+                            JOIN matches m ON msm.match_id = m.id
+                            WHERE msm.player_id = %s AND msm.team_id = %s AND m.status = 'completed' AND {sf}
+                            GROUP BY agent ORDER BY c DESC LIMIT 1
+                        """, (pid, tid, season, season) if season != 'all' else (pid, tid))
+                        agent_row = cursor.fetchone()
+                        if agent_row:
+                            player_best.append(f"**{pname}**: {agent_row[0]}")
+                        else:
+                            player_best.append(f"**{pname}**: *No data*")
+                else:
+                    player_best = ["*No roster found*"]
+                
+                # Fetch Recent Matches
+                cursor.execute(f"""
+                    SELECT m.week, 
+                           CASE WHEN m.team1_id = %s THEN t2.name ELSE t1.name END as op_name,
+                           CASE WHEN m.winner_id = %s THEN 'W' 
+                                WHEN m.winner_id IS NOT NULL AND m.winner_id != %s THEN 'L'
+                                ELSE 'D' END as res,
+                           CASE WHEN m.team1_id = %s THEN COALESCE(mr.r1, 0) ELSE COALESCE(mr.r2, 0) END as my_score,
+                           CASE WHEN m.team1_id = %s THEN COALESCE(mr.r2, 0) ELSE COALESCE(mr.r1, 0) END as op_score
+                    FROM matches m
+                    JOIN teams t1 ON m.team1_id = t1.id
+                    JOIN teams t2 ON m.team2_id = t2.id
+                    LEFT JOIN (
+                        SELECT match_id, SUM(team1_rounds) as r1, SUM(team2_rounds) as r2
+                        FROM match_maps GROUP BY match_id
+                    ) mr ON m.id = mr.match_id
+                    WHERE (m.team1_id = %s OR m.team2_id = %s) AND m.status = 'completed' AND {sf}
+                    ORDER BY m.week DESC, m.id DESC LIMIT 5
+                """, (tid, tid, tid, tid, tid, tid, tid, season, season) if season != 'all' else (tid, tid, tid, tid, tid, tid, tid))
+                recent = cursor.fetchall()
+                
+                # Fetch Top Players (Roster Only)
+                cursor.execute(f"""
+                    SELECT p.name, AVG(msm.acs) as avg_acs
+                    FROM match_stats_map msm
+                    JOIN matches m ON msm.match_id = m.id
+                    JOIN players p ON msm.player_id = p.id
+                    WHERE msm.team_id = %s AND p.default_team_id = %s AND m.status = 'completed' AND {sf}
+                    GROUP BY p.id, p.name
+                    ORDER BY avg_acs DESC LIMIT 2
+                """, (tid, tid, season, season) if season != 'all' else (tid, tid))
+                top_players = cursor.fetchall()
+                
+            # Process Maps
+            map_stats = {}
+            for m_name, my_r, op_r in maps_data:
+                if m_name not in map_stats: map_stats[m_name] = {'w': 0, 'l': 0}
+                my_r = my_r or 0
+                op_r = op_r or 0
+                if my_r > op_r: map_stats[m_name]['w'] += 1
+                elif op_r > my_r: map_stats[m_name]['l'] += 1
+            
+            sorted_maps = sorted([{'name': k, 'w': v['w'], 'l': v['l'], 'wr': (v['w']/(v['w']+v['l']) if v['w']+v['l']>0 else 0)} for k, v in map_stats.items()], key=lambda x: x['wr'], reverse=True)
+            best_maps = sorted_maps[:2]
+            worst_maps = sorted_maps[-2:] if len(sorted_maps) > 2 else []
+            if len(sorted_maps) > 2:
+                worst_maps = [m for m in worst_maps if m['name'] not in [b['name'] for b in best_maps]][-2:]
+
+            embed = discord.Embed(
+                title=f"🕵️‍♂️ Scouting Report: {tname} [{ttag}]",
+                description=f"Group: **{tgroup or 'N/A'}** · Season: `{season}`",
+                color=V_RED
+            )
+            
+            # Map Mastery
+            bm_str = "\n".join([f"**{m['name']}** - {int(m['wr']*100)}% ({m['w']}W-{m['l']}L)" for m in best_maps]) or "N/A"
+            wm_str = "\n".join([f"**{m['name']}** - {int(m['wr']*100)}% ({m['w']}W-{m['l']}L)" for m in worst_maps[::-1]]) or "N/A"
+            embed.add_field(name="✅ Best Maps", value=bm_str, inline=True)
+            embed.add_field(name="❌ Weakest Maps", value=wm_str, inline=True)
+            embed.add_field(name="\u200b", value="\u200b", inline=False)
+            
+            # Agent Meta (Comfort Picks)
+            meta_str = "\n".join(player_best)
+            embed.add_field(name="🎭 Roster Agent Meta", value=meta_str, inline=True)
+            
+            # Danger Players
+            dp_str = "\n".join([f"**{p[0]}** - {int(p[1])} ACS" for p in top_players]) or "N/A"
+            embed.add_field(name="⚠️ Danger Players", value=dp_str, inline=True)
+            embed.add_field(name="\u200b", value="\u200b", inline=False)
+            
+            # Recent Form
+            form_str = " - ".join([f"**{r[2]}** vs {r[1]} (`{r[3]}-{r[4]}`)" for r in recent]) or "N/A"
+            embed.add_field(name="📈 Recent Form (Last 5)", value=form_str, inline=False)
+            
+            await interaction.followup.send(embed=embed)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: {str(e)}")
+
     # ── /standings ───────────────────────────────────────────────────────────
     @app_commands.command(name="standings", description="View current group standings")
     @app_commands.describe(group="Group name (e.g. A, B, C)", season="Season ID")
     async def standings(self, interaction: discord.Interaction, group: str, season: str = None):
         try: await interaction.response.defer()
         except: return
-        if season is None: season = await run_in_executor(get_default_season)
+        
+        if season is None: 
+            season = await run_in_executor(get_default_season)
+        
         try:
             with get_conn() as conn:
                 if not conn: return await interaction.followup.send("❌ DB Connection Error.")
+                
                 sf = "(m.season_id = %s OR (m.season_id IS NULL AND %s = 'S23'))" if season != 'all' else "1=1"
+                
+                # New Query Logic:
+                # 1. Calculates t1_pts and t2_pts based on: Winner=15, Loser=LEAST(rounds, 12)
+                # 2. Aggregates rounds across ALL maps in a match 
                 query = f"""
-                WITH tm AS (
+                WITH match_rounds AS (
+                    SELECT 
+                        match_id, 
+                        SUM(team1_rounds) as total_r1, 
+                        SUM(team2_rounds) as total_r2
+                    FROM match_maps
+                    GROUP BY match_id
+                ),
+                tm AS (
                     SELECT m.team1_id as tid,
                         CASE WHEN m.winner_id=m.team1_id THEN 1 ELSE 0 END as win,
                         CASE WHEN m.winner_id=m.team2_id THEN 1 ELSE 0 END as loss,
-                        COALESCE(mm.team1_rounds,0) as pts,
-                        COALESCE(mm.team2_rounds,0) as pts_a
-                    FROM matches m LEFT JOIN match_maps mm ON m.id=mm.match_id AND mm.map_index=0
-                    WHERE m.status='completed' AND m.match_type='regular' AND {sf}
+                        CASE 
+                            WHEN m.winner_id=m.team1_id THEN 15 
+                            ELSE LEAST(COALESCE(mr.total_r1, 0), 12) 
+                        END as earned_pts,
+                        CASE 
+                            WHEN m.winner_id=m.team2_id THEN 15 
+                            ELSE LEAST(COALESCE(mr.total_r2, 0), 12) 
+                        END as against_pts
+                    FROM matches m 
+                    LEFT JOIN match_rounds mr ON m.id=mr.match_id
+                    WHERE m.status='completed' AND m.match_type!='playoff' AND {sf}
+                    
                     UNION ALL
+                    
                     SELECT m.team2_id,
                         CASE WHEN m.winner_id=m.team2_id THEN 1 ELSE 0 END,
                         CASE WHEN m.winner_id=m.team1_id THEN 1 ELSE 0 END,
-                        COALESCE(mm.team2_rounds,0),
-                        COALESCE(mm.team1_rounds,0)
-                    FROM matches m LEFT JOIN match_maps mm ON m.id=mm.match_id AND mm.map_index=0
-                    WHERE m.status='completed' AND m.match_type='regular' AND {sf}
+                        CASE 
+                            WHEN m.winner_id=m.team2_id THEN 15 
+                            ELSE LEAST(COALESCE(mr.total_r2, 0), 12) 
+                        END,
+                        CASE 
+                            WHEN m.winner_id=m.team1_id THEN 15 
+                            ELSE LEAST(COALESCE(mr.total_r1, 0), 12) 
+                        END
+                    FROM matches m 
+                    LEFT JOIN match_rounds mr ON m.id=mr.match_id
+                    WHERE m.status='completed' AND m.match_type!='playoff' AND {sf}
                 )
                 SELECT t.name, t.tag,
                     COUNT(tm.tid) as played,
                     SUM(tm.win) as wins,
                     SUM(tm.loss) as losses,
-                    SUM(tm.win)*3 as pts,
-                    (SUM(tm.pts)-SUM(tm.pts_a)) as pd
-                FROM teams t LEFT JOIN tm ON t.id=tm.tid
-                WHERE t.group_name ILIKE %s
+                    SUM(tm.earned_pts) as total_pts,
+                    (SUM(tm.earned_pts) - SUM(tm.against_pts)) as pd
+                FROM teams t 
+                LEFT JOIN tm ON t.id=tm.tid
+                WHERE t.group_name ILIKE %s 
+                  AND t.name NOT IN ('FAT1', 'FAT2')
                 GROUP BY t.id, t.name, t.tag
-                ORDER BY pts DESC, pd DESC
+                ORDER BY total_pts DESC, pd DESC
                 """
+                
                 cursor = conn.cursor()
                 params = (season, season, season, season, group) if season != 'all' else (group,)
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
+                
                 if not rows:
                     return await interaction.followup.send(f"❌ No data for group `{group}` in season `{season}`.")
 
             embed = discord.Embed(
                 title=f"📊 Group **{group.upper()}** Standings",
-                description=f"Season `{season}`",
-                color=V_GOLD
+                description=f"Season `{season}`\n*Winner: 15pts | Loser: rounds (max 12)*",
+                color=0xFFD700 # V_GOLD
             )
+            
             lines = []
             for i, (name, tag, played, wins, losses, pts, pd_val) in enumerate(rows, 1):
                 medal = ["🥇","🥈","🥉"][i-1] if i <= 3 else f"`{i}.`"
                 wr = round(wins / max(played, 1) * 100)
-                streak = "🔥" if wins and not losses else ("💀" if losses and not wins else "")
+                streak = "🔥" if wins > 0 and losses == 0 else ("💀" if losses > 0 and wins == 0 else "")
+                
                 lines.append(
                     f"{medal} **{name}** `{tag}`\n"
-                    f"  `W{wins or 0} L{losses or 0}` · Pts `{pts or 0}` · PD `{'+' if (pd_val or 0)>=0 else ''}{pd_val or 0}` · WR `{wr}%` {streak}"
+                    f"  `W{wins or 0} L{losses or 0}` · Pts `{pts or 0}` · PD `{'+' if (pd_val or 0)>=0 else ''}{pd_val or 0}` · WR `{wr}%` {streak}"
                 )
+            
             embed.add_field(name="\u200b", value="\n".join(lines), inline=False)
-            embed.set_footer(text=f"Sorted by points then Point Differential")
+            embed.set_footer(text=f"Sorted by League Points then Point Differential")
             await interaction.followup.send(embed=embed)
+            
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
 
     # ── /leaderboard ─────────────────────────────────────────────────────────
     @app_commands.command(name="leaderboard", description="Show top players by performance")
-    @app_commands.describe(stat="Stat to rank by", rank="Filter by rank tier", min_games="Min maps played", season="Season ID")
+    @app_commands.describe(stat="Stat to rank by", rank="Filter by rank tier", role="Filter by role", min_games="Min maps played", season="Season ID")
     @app_commands.choices(stat=[
         app_commands.Choice(name="ACS",  value="avg_acs"),
         app_commands.Choice(name="K/D",  value="avg_kd"),
@@ -200,14 +370,39 @@ class AnalyticsCog(commands.Cog):
         app_commands.Choice(name="KAST", value="avg_kast"),
         app_commands.Choice(name="HS%",  value="avg_hs"),
     ])
+    @app_commands.choices(role=[
+        app_commands.Choice(name="Duelist", value="duelist"),
+        app_commands.Choice(name="Initiator", value="initiator"),
+        app_commands.Choice(name="Sentinel", value="sentinel"),
+        app_commands.Choice(name="Controller", value="controller"),
+    ])
     @app_commands.autocomplete(rank=rank_autocomplete)
     async def leaderboard(self, interaction: discord.Interaction, stat: str = "avg_acs",
-                          rank: str = None, min_games: int = 0, season: str = None):
+                          rank: str = None, role: str = None, min_games: int = 0, season: str = None):
         await interaction.response.defer()
         if season is None: season = await run_in_executor(get_default_season)
         try:
             sf = "(m.season_id = %s OR (m.season_id IS NULL AND %s = 'S23'))" if season != 'all' else "1=1"
+            sf2 = "(m2.season_id = %s OR (m2.season_id IS NULL AND %s = 'S23'))" if season != 'all' else "1=1"
             rank_filter = "AND p.rank ILIKE %s" if rank else ""
+            
+            agent_roles_sql = {
+                "duelist": "('Jett', 'Phoenix', 'Raze', 'Reyna', 'Yoru', 'Neon', 'Iso', 'Waylay')",
+                "initiator": "('Sova', 'Breach', 'Skye', 'KAY/O', 'Fade', 'Gekko', 'Tejo')",
+                "sentinel": "('Sage', 'Cypher', 'Killjoy', 'Chamber', 'Deadlock', 'Vyse', 'Veto')",
+                "controller": "('Brimstone', 'Viper', 'Omen', 'Astra', 'Harbor', 'Clove', 'Miks')"
+            }
+            role_filter = f"AND (SELECT agent FROM match_stats_map msm2 JOIN matches m2 ON msm2.match_id=m2.id WHERE msm2.player_id=p.id AND m2.status='completed' AND {sf2} GROUP BY agent ORDER BY COUNT(*) DESC LIMIT 1) IN {agent_roles_sql[role]}" if role else ""
+
+            params = []
+            if season != 'all':
+                params.extend([season, season])
+            if rank:
+                params.append(f"%{rank}%")
+            if role and season != 'all':
+                params.extend([season, season])
+            params.append(min_games)
+
             with get_conn() as conn:
                 if not conn: return await interaction.followup.send("❌ DB Error.")
                 cursor = conn.cursor()
@@ -223,14 +418,11 @@ class AnalyticsCog(commands.Cog):
                     JOIN matches m ON msm.match_id=m.id
                     JOIN players p ON msm.player_id=p.id
                     LEFT JOIN teams t ON p.default_team_id=t.id
-                    WHERE m.status='completed' AND {sf} {rank_filter}
+                    WHERE m.status='completed' AND {sf} {rank_filter} {role_filter}
                     GROUP BY p.id,p.name,p.riot_id,p.uuid,p.rank,t.tag
                     HAVING COUNT(DISTINCT msm.match_id) >= %s
                     ORDER BY {stat} DESC LIMIT 10
-                """, (season, season, f"%{rank}%", min_games) if season != 'all' and rank
-                  else (season, season, min_games) if season != 'all'
-                  else (f"%{rank}%", min_games) if rank
-                  else (min_games,))
+                """, tuple(params))
                 rows = cursor.fetchall()
 
             if not rows:
@@ -389,7 +581,8 @@ class AnalyticsCog(commands.Cog):
                 recent = cursor.fetchall()
 
             kd  = k / max(d, 1)
-            arch = determine_archetype(fk, maps, kast, a)
+            most_played_agent = agents[0][0] if agents else ""
+            arch = determine_archetype(most_played_agent)
             rank_icon = _rank_icon(prank)
 
             # Discord avatar

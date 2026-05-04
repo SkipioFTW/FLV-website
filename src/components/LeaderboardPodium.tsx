@@ -62,6 +62,15 @@ export default function LeaderboardPodium({ topPlayers }: PodiumProps) {
                                 <div className="text-xs md:text-sm font-bold text-foreground/40 uppercase tracking-widest">
                                     ACS {player.avg_acs}
                                 </div>
+                                <div className={`text-[10px] md:text-xs font-black uppercase tracking-widest px-2 py-1 mt-2 rounded inline-block ${
+                                    player.role === 'Duelist' ? 'text-red-400 bg-red-400/10' :
+                                    player.role === 'Initiator' ? 'text-yellow-400 bg-yellow-400/10' :
+                                    player.role === 'Sentinel' ? 'text-gray-300 bg-gray-400/10' :
+                                    player.role === 'Controller' ? 'text-purple-400 bg-purple-400/10' :
+                                    'text-foreground/60 bg-white/5'
+                                }`}>
+                                    {player.role || 'Flex'}
+                                </div>
                             </div>
 
                             {/* Podium Base */}
