@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildFeatures } from '@/lib/features/buildFeatures';
+import { buildDynamicFeatures } from '@/lib/features/buildDynamicFeatures';
 import { loadModel } from '@/lib/model/registry';
 import { logisticPredict } from '@/lib/model/infer';
 
@@ -13,26 +14,43 @@ export async function GET(req: NextRequest) {
     if (!t1 || !t2 || t1 === t2) {
       return NextResponse.json({ error: 'invalid team ids' }, { status: 400 });
     }
-    const fv = await buildFeatures(t1, t2);
     let prob: number | null = null;
-    let modelRaw: any = null;
+    let modelRaw: { type: string; teams?: Record<number, { rating_b: number; strength_s: number }> } | null = null;
+    let features: Record<string, number> = {};
+
     try {
       const { model, scalers } = await loadModel(false);
-      prob = logisticPredict(fv.values, model, scalers, t1, t2);
       modelRaw = model;
-    } catch {
+
+      if (model.type === 'logistic_v5') {
+        const dfv = await buildDynamicFeatures(t1, t2);
+        prob = logisticPredict(dfv.values, model, scalers, t1, t2);
+        features = dfv.order.reduce((acc: Record<string, number>, key, i) => {
+          acc[key] = dfv.values[i];
+          return acc;
+        }, {});
+      } else {
+        const fv = await buildFeatures(t1, t2);
+        prob = logisticPredict(fv.values, model, scalers, t1, t2);
+        features = fv.order.reduce((acc: Record<string, number>, key, i) => {
+          acc[key] = fv.values[i];
+          return acc;
+        }, {});
+      }
+    } catch (e) {
+      console.error('Prediction error:', e);
       prob = 0.5;
     }
 
     // Inject Old Model detailed features for inspection
-    let features = fv.order.reduce((acc: any, key, i) => { acc[key] = fv.values[i]; return acc; }, {});
-    if (modelRaw?.type === 'b_ratings') {
-      features = {
-        t1_rating_b: modelRaw.teams?.[t1]?.rating_b,
-        t2_rating_b: modelRaw.teams?.[t2]?.rating_b,
-        t1_strength_s: modelRaw.teams?.[t1]?.strength_s,
-        t2_strength_s: modelRaw.teams?.[t2]?.strength_s,
-        ...features
+    let finalFeatures: Record<string, number | undefined> = { ...features };
+    if (modelRaw?.type === 'b_ratings' && modelRaw.teams) {
+      finalFeatures = {
+        t1_rating_b: modelRaw.teams[t1]?.rating_b,
+        t2_rating_b: modelRaw.teams[t2]?.rating_b,
+        t1_strength_s: modelRaw.teams[t1]?.strength_s,
+        t2_strength_s: modelRaw.teams[t2]?.strength_s,
+        ...finalFeatures
       };
     }
 
@@ -40,9 +58,10 @@ export async function GET(req: NextRequest) {
       team1_id: t1,
       team2_id: t2,
       probability_team1_win: prob,
-      features
+      features: finalFeatures
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'server error' }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

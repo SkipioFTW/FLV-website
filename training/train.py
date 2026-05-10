@@ -1,185 +1,111 @@
 import os
 import json
-import time
-import math
-import tempfile
-from collections import defaultdict
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
 from supabase import create_client, Client
 
-SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+# Use credentials
+SUPABASE_URL = "https://tekwoxehaktajyizaacj.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRla3dveGVoYWt0YWp5aXphYWNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NzcxMDAsImV4cCI6MjA4NjI1MzEwMH0.u9c2Kt8gWF_HxeIAzblT6p1NSLwjaeYFPglZoLj051U"
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "new_app_repo", ".env.local")
-    if not os.path.exists(env_path):
-        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env.local")
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    if k == "NEXT_PUBLIC_SUPABASE_URL": SUPABASE_URL = v.strip("'\" ")
-                    if k == "SUPABASE_SERVICE_ROLE_KEY" or k == "NEXT_PUBLIC_SUPABASE_ANON_KEY": SUPABASE_SERVICE_ROLE_KEY = v.strip("'\" ")
+RANK_MAP = {
+    'Iron/Bronze': 2, 'Silver': 5, 'Gold': 8, 'Platinum': 11,
+    'Diamond': 14, 'Ascendant': 17, 'Immortal 1/2': 20,
+    'Immortal 3/Radiant': 23, 'Radiant': 25
+}
 
-def supabase_client() -> Client:
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-        raise RuntimeError("Missing Supabase credentials")
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-def extract_team_summaries(sb: Client):
-    summaries = {}
-    
-    # 1. Matches for Points
-    res_m = sb.table("matches").select("team1_id, team2_id, winner_id, score_t1, score_t2").eq("status", "completed").execute()
-    res_t = sb.table("teams").select("id, name").execute()
-    
-    for team in res_t.data:
-        summaries[team['id']] = {
-            "name": team['name'], "points": 0, "diff": 0, "rating_r": 0, 
-            "strength_s": 0, "rating_b": 0, "match_count": 0
-        }
-
-    for m in res_m.data:
-        t1, t2 = m['team1_id'], m['team2_id']
-        s1, s2 = m.get('score_t1') or 0, m.get('score_t2') or 0
-        w = m['winner_id']
-        
-        if t1 not in summaries or t2 not in summaries: continue
-
-        diff1 = s1 - s2
-        diff2 = s2 - s1
-        summaries[t1]['diff'] += diff1
-        summaries[t2]['diff'] += diff2
-        summaries[t1]['match_count'] += 1
-        summaries[t2]['match_count'] += 1
-        
-        if w == t1:
-            summaries[t1]['points'] += 15
-            summaries[t2]['points'] += min(s2, 12)
-        elif w == t2:
-            summaries[t2]['points'] += 15
-            summaries[t1]['points'] += min(s1, 12)
-
-    for sid, sdata in summaries.items():
-        sdata['rating_r'] = sdata['points'] + 0.5 * sdata['diff']
-
-    # 2. Player Data (S) + Deep Stats
-    res_p = sb.table('players').select('id, default_team_id').not_.is_('default_team_id', 'null').execute()
-    player_to_team = {p['id']: p['default_team_id'] for p in res_p.data}
-    
-    res_s = sb.table('match_stats_map').select('player_id, kills, deaths, acs, adr, kast, plants, defuses, clutches, survived').execute()
-    
-    team_pstats = {}
-    for row in res_s.data:
-        pid = row['player_id']
-        if pid not in player_to_team: continue
-        tid = player_to_team[pid]
-        if tid not in team_pstats:
-            team_pstats[tid] = {'k':0, 'd':0, 'acs':0, 'adr':0, 'kast':0, 'plants':0, 'defuses':0, 'clutches':0, 'survived':0, 'rounds':0}
-            
-        ts = team_pstats[tid]
-        ts['k'] += row.get('kills') or 0
-        ts['d'] += row.get('deaths') or 0
-        ts['acs'] += row.get('acs') or 0
-        ts['adr'] += row.get('adr') or 0
-        ts['kast'] += row.get('kast') or 0
-        ts['plants'] += row.get('plants') or 0
-        ts['defuses'] += row.get('defuses') or 0
-        ts['clutches'] += row.get('clutches') or 0
-        ts['survived'] += row.get('survived') or 0
-        ts['rounds'] += 1
-
-    s_values = []
-    for tid, ts in team_pstats.items():
-        if ts['rounds'] == 0:
-            if tid in summaries: summaries[tid]["strength_s"] = 0
-            continue
-        
-        avg_acs = ts['acs'] / ts['rounds']
-        avg_adr = ts['adr'] / ts['rounds']
-        avg_kast = ts['kast'] / ts['rounds']
-        avg_kd = ts['k'] / max(1, ts['d'])
-        avg_plants = ts['plants'] / ts['rounds']
-        avg_defuses = ts['defuses'] / ts['rounds']
-        avg_clutch = ts['clutches'] / ts['rounds']
-        avg_surv = ts['survived'] / ts['rounds']
-        
-        base_s = (avg_acs - 200) + 100*(avg_kd - 1) + 0.5*(avg_adr - 130) + 0.2*(avg_kast - 70) 
-        deep_s = (avg_plants * 2.0) + (avg_defuses * 2.0) + (avg_clutch * 10.0) + (avg_surv * 1.5)
-        
-        s_val = base_s + deep_s
-        if tid in summaries:
-            summaries[tid]["strength_s"] = s_val
-            s_values.append(s_val)
-
-    # 3. Blended Rating (B)
-    if len(s_values) > 1:
-        s_mean = sum(s_values) / len(s_values)
-        s_std = math.sqrt(sum((x - s_mean)**2 for x in s_values) / len(s_values))
-        if s_std == 0: s_std = 1
-        for t in summaries:
-            z = (summaries[t]["strength_s"] - s_mean) / s_std
-            summaries[t]["rating_b"] = summaries[t]["rating_r"] + 10 * z
-    else:
-        for t in summaries:
-            summaries[t]["rating_b"] = summaries[t]["rating_r"]
-
-    # Calculate historic accuracy
-    correct = 0
-    total = 0
-    for m in res_m.data:
-        t1, t2 = m['team1_id'], m['team2_id']
-        winner = m['winner_id']
-        if t1 in summaries and t2 in summaries and winner:
-            b1 = summaries[t1]['rating_b']
-            b2 = summaries[t2]['rating_b']
-            pred = t1 if b1 > b2 else t2
-            if pred == winner: correct += 1
-            total += 1
-            
-    acc = correct / max(1, total)
-    return summaries, acc
+def get_rank_value(rank_str):
+    if not rank_str: return 10
+    for k, v in RANK_MAP.items():
+        if k.lower() in rank_str.lower(): return v
+    return 10
 
 def main():
-    sb = supabase_client()
-    summaries, acc = extract_team_summaries(sb)
-
-    model = {
-        "type": "b_ratings",
-        "alpha": 1.5,
-        "std_x": 10.0,
-        "teams": summaries,
-        "version": "v3_old_logic"
-    }
+    sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("Extracting data...")
+    matches = sb.table("matches").select("*").eq("status", "completed").execute().data
+    stats = []
+    start = 0
+    while True:
+        res = sb.table("match_stats_map").select("*").range(start, start + 999).execute().data
+        if not res: break
+        stats.extend(res)
+        start += 1000
+    players = sb.table("players").select("*").execute().data
     
-    scalers = {
-        "type": "none",
-    }
+    df_matches = pd.DataFrame(matches).sort_values(['season_id', 'id'])
+    df_stats = pd.DataFrame(stats)
+    df_players = pd.DataFrame(players)
     
-    metrics = {
-        "accuracy": float(acc),
-        "version": str(int(time.time())),
-        "updatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "note": "Old prediction model R_S_B algorithmic logic"
-    }
+    player_history = {}
+    team_history = {}
+    features, labels, seasons = [], [], []
 
-    def upload_json(path, obj):
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-        try:
-            tmp.write(json.dumps(obj).encode("utf-8"))
-            tmp.flush()
-            tmp.close()
-            sb.storage.from_("models").upload(path, tmp.name, {"contentType": "application/json", "upsert": "true"})
-        finally:
-            try:
-                os.remove(tmp.name)
-            except:
-                pass
-                
-    upload_json("current/model.json", model)
-    upload_json("current/scalers.json", scalers)
-    upload_json("current/metrics.json", metrics)
-    print(f"Model trained and uploaded. Accuracy over {len(summaries)} teams: {acc*100:.1f}%")
+    print("Training model...")
+    for _, match in df_matches.iterrows():
+        mid, t1, t2, winner = match['id'], match['team1_id'], match['team2_id'], match['winner_id']
+        if not winner: continue
+        m_stats = df_stats[df_stats['match_id'] == mid]
+        t1_pids = m_stats[m_stats['team_id'] == t1]['player_id'].unique()
+        t2_pids = m_stats[m_stats['team_id'] == t2]['player_id'].unique()
+        if len(t1_pids) == 0 or len(t2_pids) == 0: continue
+        
+        def get_roster(pids):
+            acs, kd, rank, exp = [], [], [], []
+            for pid in pids:
+                p_info = df_players[df_players['id'] == pid]
+                rv = get_rank_value(p_info['rank'].iloc[0] if not p_info.empty else None)
+                rank.append(rv)
+                h = player_history.get(pid, [])
+                if h:
+                    recent = h[-5:]
+                    acs.append(np.mean([x['acs'] for x in recent]))
+                    exp.append(len(h))
+                    kd.append(sum([x['kills'] for x in recent]) / max(1, sum([x['deaths'] for x in recent])))
+                else:
+                    acs.append(140 + rv * 6); kd.append(0.4 + rv * 0.04); exp.append(0)
+            return {'acs': np.mean(acs), 'kd': np.mean(kd), 'rank': np.mean(rank), 'exp': np.sum(exp)}
+        
+        def get_team(tid):
+            h = team_history.get(tid, [])
+            if not h: return {'wr': 0.5, 'form': 0.5, 'rd': 0}
+            return {'wr': sum([1 for x in h if x['won']]) / len(h), 'form': sum([1 for x in h[-3:] if x['won']]) / len(h[-3:]), 'rd': np.mean([x['rd'] for x in h])}
+
+        r1, r2 = get_roster(t1_pids), get_roster(t2_pids)
+        tm1, tm2 = get_team(t1), get_team(t2)
+        features.append([r1['acs']-r2['acs'], r1['kd']-r2['kd'], r1['rank']-r2['rank'], r1['exp']-r2['exp'], tm1['wr']-tm2['wr'], tm1['form']-tm2['form'], tm1['rd']-tm2['rd']])
+        labels.append(1 if winner == t1 else 0)
+        seasons.append(match['season_id'])
+        
+        for _, row in m_stats.iterrows():
+            pid = row['player_id']
+            if pid not in player_history: player_history[pid] = []
+            player_history[pid].append({'acs': row['acs'], 'kills': row['kills'], 'deaths': row['deaths']})
+        s1, s2 = match.get('score_t1', 0) or 0, match.get('score_t2', 0) or 0
+        if t1 not in team_history: team_history[t1] = []
+        team_history[t1].append({'won': winner == t1, 'rd': s1 - s2})
+        if t2 not in team_history: team_history[t2] = []
+        team_history[t2].append({'won': winner == t2, 'rd': s2 - s1})
+
+    X, y = np.array(features), np.array(labels)
+    scaler = StandardScaler()
+    X_s = scaler.fit_transform(X)
+    model = LogisticRegression().fit(X_s, y)
+    
+    # Save artifacts locally
+    f_names = ["diff_acs", "diff_kd", "diff_rank", "diff_exp", "diff_wr", "diff_form", "diff_rd"]
+    os.makedirs("training/output", exist_ok=True)
+    with open("training/output/model.json", "w") as f: json.dump({"type": "logistic_v5", "intercept": float(model.intercept_[0]), "coefficients": model.coef_[0].tolist(), "feature_order": f_names, "version": "v5"}, f)
+    with open("training/output/scalers.json", "w") as f: json.dump({"means": scaler.mean_.tolist(), "stds": scaler.scale_.tolist(), "feature_order": f_names}, f)
+    
+    cur_p = {pid: {'acs': float(np.mean([x['acs'] for x in h[-5:]])), 'kd': float(sum([x['kills'] for x in h[-5:]]) / max(1, sum([x['deaths'] for x in h[-5:]]))), 'exp': len(h)} for pid, h in player_history.items()}
+    cur_t = {tid: {'wr': float(sum([1 for x in h if x['won']]) / len(h)), 'form': float(sum([1 for x in h[-3:] if x['won']]) / len(h[-3:])), 'rd': float(np.mean([x['rd'] for x in h]))} for tid, h in team_history.items()}
+    with open("training/output/player_stats.json", "w") as f: json.dump(cur_p, f)
+    with open("training/output/team_stats.json", "w") as f: json.dump(cur_t, f)
+    print("Training finished.")
 
 if __name__ == "__main__":
     main()

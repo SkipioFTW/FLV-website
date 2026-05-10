@@ -25,7 +25,7 @@ export async function buildFeatures(team1Id: number, team2Id: number): Promise<F
   }
   const maxWeek = Math.max(...matches.map(m => m.week || 0));
   const perMatchTeam = new Map<string, { players_acs: number[]; kills: number; deaths: number; adr_vals: number[]; kast_vals: number[] }>();
-  (stats || []).forEach((s: any) => {
+  (stats as { match_id: number; team_id: number; acs: number; kills: number; deaths: number; adr: number | null; kast: number | null }[] || []).forEach((s) => {
     const key = `${s.match_id}:${s.team_id}`;
     const rec = perMatchTeam.get(key) || { players_acs: [], kills: 0, deaths: 0, adr_vals: [], kast_vals: [] };
     rec.players_acs.push(s.acs || 0);

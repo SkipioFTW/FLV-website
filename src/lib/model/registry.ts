@@ -1,7 +1,5 @@
-import { supabase } from '@/lib/supabase';
-
-let cachedModel: any = null;
-let cachedScalers: any = null;
+let cachedModel: { type: string; [key: string]: unknown } | null = null;
+let cachedScalers: { means?: number[]; stds?: number[]; [key: string]: unknown } | null = null;
 let lastFetched: number = 0;
 const TTL_MS = 10 * 60 * 1000;
 
@@ -14,7 +12,12 @@ async function fetchPublicJSON(path: string) {
   return res.json();
 }
 
-export async function loadModel(force = false) {
+interface ModelArtifacts {
+    model: { type: string; [key: string]: unknown };
+    scalers: { means?: number[]; stds?: number[]; [key: string]: unknown };
+}
+
+export async function loadModel(force = false): Promise<ModelArtifacts> {
   const now = Date.now();
   if (!force && cachedModel && cachedScalers && now - lastFetched < TTL_MS) {
     return { model: cachedModel, scalers: cachedScalers };

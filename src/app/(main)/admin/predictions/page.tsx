@@ -17,7 +17,9 @@ export default function PredictionsAdminPage() {
       .catch(() => null);
     // lightweight fetch via supabase (client) to populate teams
     import('@/lib/supabase').then(({ supabase }) => {
-      supabase.from('teams').select('id,name').order('name').then(({ data }) => setTeams((data as any[]) || []));
+      supabase.from('teams').select('id,name').order('name').then(({ data }) => {
+          if (data) setTeams(data as { id: number; name: string }[]);
+      });
     });
     // Try to fetch metrics.json from public storage
     const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -50,8 +52,9 @@ export default function PredictionsAdminPage() {
       } else {
         setMsg('Model cache cleared');
       }
-    } catch (e: any) {
-      setMsg(`Reload failed`);
+    } catch (e: unknown) {
+        const errorMsg = e instanceof Error ? e.message : 'Reload failed';
+        setMsg(errorMsg);
     } finally {
       setBusy(false);
     }
@@ -66,8 +69,9 @@ export default function PredictionsAdminPage() {
       } else {
         setMsg('Retrain dispatched to GitHub Actions');
       }
-    } catch (e: any) {
-      setMsg('Retrain failed');
+    } catch (e: unknown) {
+        const errorMsg = e instanceof Error ? e.message : 'Retrain failed';
+        setMsg(errorMsg);
     } finally {
       setBusy(false);
     }
