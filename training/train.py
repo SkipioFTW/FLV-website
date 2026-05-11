@@ -6,10 +6,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
-# Use credentials
-SUPABASE_URL = "https://tekwoxehaktajyizaacj.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRla3dveGVoYWt0YWp5aXphYWNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NzcxMDAsImV4cCI6MjA4NjI1MzEwMH0.u9c2Kt8gWF_HxeIAzblT6p1NSLwjaeYFPglZoLj051U"
+# Try to load environment variables from .env.local
+load_dotenv(".env.local")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
 RANK_MAP = {
     'Iron/Bronze': 2, 'Silver': 5, 'Gold': 8, 'Platinum': 11,
@@ -24,6 +27,10 @@ def get_rank_value(rank_str):
     return 10
 
 def main():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("Missing Supabase credentials. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.")
+        return
+
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     print("Extracting data...")
     matches = sb.table("matches").select("*").eq("status", "completed").execute().data
@@ -79,7 +86,7 @@ def main():
         features.append([r1['acs']-r2['acs'], r1['kd']-r2['kd'], r1['rank']-r2['rank'], r1['exp']-r2['exp'], tm1['wr']-tm2['wr'], tm1['form']-tm2['form'], tm1['rd']-tm2['rd']])
         labels.append(1 if winner == t1 else 0)
         seasons.append(match['season_id'])
-        
+
         for _, row in m_stats.iterrows():
             pid = row['player_id']
             if pid not in player_history: player_history[pid] = []
