@@ -8,7 +8,7 @@ import pandas as pd
 
 # Load credentials from .env.local
 SUPABASE_URL = "https://tekwoxehaktajyizaacj.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRla3dveGVoYWt0YWp5aXphYWNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NzcxMDAsImV4cCI6MjA4NjI1MzEwMH0.u9c2Kt8gWF_HxeIAzblT6p1NSLwjaeYFPglZoLj051U"
+SUPABASE_KEY = "os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")"
 
 def supabase_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
