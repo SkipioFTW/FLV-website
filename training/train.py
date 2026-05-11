@@ -28,7 +28,7 @@ def get_rank_value(rank_str):
 
 def main():
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("Missing Supabase credentials. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.")
+        print("Error: Missing Supabase credentials. Ensure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) are set in environment or .env.local")
         return
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
