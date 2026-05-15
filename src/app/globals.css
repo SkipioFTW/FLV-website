@@ -10,6 +10,13 @@
   --val-dark: #0F1923;
   --val-deep: #080E14;
   --val-surface: rgba(31, 41, 51, 0.6);
+
+  /* Extended Palette */
+  --val-red-glow: rgba(255, 70, 85, 0.4);
+  --val-blue-glow: rgba(63, 209, 255, 0.3);
+  --val-gold: #FFD700;
+  --val-surface-strong: rgba(31, 41, 51, 0.85);
+  --val-surface-subtle: rgba(31, 41, 51, 0.3);
 }
 
 @theme inline {
@@ -21,6 +28,7 @@
   --color-val-dark: var(--val-dark);
   --color-val-deep: var(--val-deep);
   --color-val-surface: var(--val-surface);
+  --color-val-gold: var(--val-gold);
 
   --font-sans: "Montserrat", var(--font-geist-sans);
   --font-display: "Orbitron", sans-serif;
@@ -39,7 +47,9 @@ body {
   background: var(--background);
 }
 
-/* Glassmorphism Utility */
+/* ═══════════════════════════════════════════
+   Glassmorphism Utilities
+   ═══════════════════════════════════════════ */
 .glass {
   background: var(--val-surface);
   backdrop-filter: var(--backdrop-blur-glass);
@@ -47,6 +57,23 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.glass-strong {
+  background: var(--val-surface-strong);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-subtle {
+  background: var(--val-surface-subtle);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ═══════════════════════════════════════════
+   Gradient Utilities
+   ═══════════════════════════════════════════ */
 .val-gradient-text {
   background: linear-gradient(90deg, var(--val-red), #FF808A);
   -webkit-background-clip: text;
@@ -54,7 +81,170 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* Custom Scrollbar */
+.val-gradient-bg {
+  background: linear-gradient(135deg, rgba(255, 70, 85, 0.15), rgba(63, 209, 255, 0.08));
+}
+
+.val-gradient-border {
+  position: relative;
+}
+.val-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 70, 85, 0.4), rgba(63, 209, 255, 0.2));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════
+   Animation Keyframes
+   ═══════════════════════════════════════════ */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px) translateX(0px); }
+  33% { transform: translateY(-8px) translateX(4px); }
+  66% { transform: translateY(4px) translateX(-4px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.05); }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes glitch-1 {
+  0%, 100% { clip-path: inset(0 0 95% 0); }
+  20% { clip-path: inset(20% 0 60% 0); }
+  40% { clip-path: inset(60% 0 10% 0); }
+  60% { clip-path: inset(40% 0 30% 0); }
+  80% { clip-path: inset(80% 0 5% 0); }
+}
+
+@keyframes particle-drift {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% {
+    transform: translateY(-100vh) translateX(50px);
+    opacity: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   Scroll-Triggered Section Styles
+   ═══════════════════════════════════════════ */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 70, 85, 0.3), rgba(63, 209, 255, 0.2), transparent);
+}
+
+.section-divider-glow {
+  height: 2px;
+  background: linear-gradient(90deg, transparent 5%, var(--val-red) 30%, var(--val-blue) 70%, transparent 95%);
+  opacity: 0.5;
+  filter: blur(1px);
+}
+
+/* ═══════════════════════════════════════════
+   Interactive Hover Effects
+   ═══════════════════════════════════════════ */
+.hover-lift {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(255, 70, 85, 0.15);
+}
+
+.hover-glow {
+  transition: box-shadow 0.4s ease;
+}
+.hover-glow:hover {
+  box-shadow: 0 0 30px rgba(255, 70, 85, 0.2), 0 0 60px rgba(255, 70, 85, 0.1);
+}
+
+.hover-border-glow {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hover-border-glow:hover {
+  border-color: rgba(255, 70, 85, 0.4);
+  box-shadow: inset 0 0 30px rgba(255, 70, 85, 0.05);
+}
+
+/* ═══════════════════════════════════════════
+   Particle System
+   ═══════════════════════════════════════════ */
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  animation: particle-drift linear infinite;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════
+   Navbar Scroll Effects
+   ═══════════════════════════════════════════ */
+.navbar-scrolled {
+  background: rgba(15, 25, 35, 0.9) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid rgba(255, 70, 85, 0.15);
+}
+
+.navbar-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 70, 85, 0.5), rgba(63, 209, 255, 0.3), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.navbar-scrolled .navbar-line {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════
+   Custom Scrollbar
+   ═══════════════════════════════════════════ */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
@@ -68,4 +258,19 @@ body {
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 70, 85, 0.5);
+}
+
+/* ═══════════════════════════════════════════
+   Gaming Accent Utilities
+   ═══════════════════════════════════════════ */
+.clip-角 {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.text-shadow-red {
+  text-shadow: 0 0 30px rgba(255, 70, 85, 0.3), 0 0 60px rgba(255, 70, 85, 0.15);
+}
+
+.text-shadow-blue {
+  text-shadow: 0 0 30px rgba(63, 209, 255, 0.3), 0 0 60px rgba(63, 209, 255, 0.15);
 }

@@ -1,38 +1,71 @@
-# Application Overview
+# FLV Portal — Application Summary
 
-This repository hosts a **Next.js 13+** web portal for the Valorant S23 tournament. The core of the application lives in the `new_app_repo` folder and is organized as follows:
+> **Last Updated:** May 2026 | **Current Season:** S24 | **Stack:** Next.js 16 + Supabase
 
-- **Pages** (`src/app/*`): Server‑component routes that render UI and call the API layer. Main pages include Home, Players, Matches, Standings, Leaderboard, Playoffs, Summary, and Predictions.
-- **API routes** (`src/app/api/*`): Next.js API routes that handle data CRUD, admin actions, DB backup/reset, site‑flag toggles, and predictions. All routes are server‑side.
-- **Components** (`src/components/*`): Reusable React components such as `Navbar`, `ActivityTracker`, `AIAnalyst`, and statistical views.
-- **Data layer** (`src/lib/*`): Utilities for fetching data from Prisma/SQLite and helpers for type definitions.
-- **Static assets**: Tailwind CSS (`globals.css`), fonts via `next/font`, and static images in `public/`.
-- **AI / Prediction**: Live predictor API routes (`/api/predict`, `/api/predictions/upcoming`) and an older Python‑based model kept in `old prediction model/`.
+## What Is This?
 
-## Build & Development Commands
-| Purpose | Command | Notes |
-|---------|---------|-------|
-| Install dependencies | `npm install` | Run inside `new_app_repo`. |
-| Dev server | `npm run dev` | Serves on `localhost:3000`. |
-| Production build | `npm run build` | Generates `.next` output. |
-| Serve build | `npm run start` | Runs the built app. |
-| Lint | `npm run lint` | ESLint on TS/TSX files. |
-| Type check | `npm run typecheck` | `tsc --noEmit`. |
-| Format | `npm run format` | Prettier. |
-| Run tests | `npm run test` | Jest or Vitest. |
-| Run single test | `npm test path/to/test.tsx` | Jest style. |
+The **FLV (French League Valorant) Tournament Portal** is a full-stack web application for managing and analyzing a Valorant tournament. It provides public-facing standings, leaderboards, and player analytics, plus admin tools for match management and an AI-powered analyst.
 
-## Typical API Flow
-1. Frontend request → Next.js API route → Prisma/JSON → Response.
-2. Admin actions use `/api/admin/*` with JWT authentication.
-3. Prediction endpoints call either the Node‑based predictor or the legacy Python model.
+## Quick Start
 
-## Key Architectural Decisions
-- **App router** for server components and data‑first rendering.
-- **Prisma + SQLite** for a lightweight DB in dev; can be swapped out.
-- **AI Analyst component** overlays analytics via polling/WebSocket.
-- **Separate legacy model folder** preserves old Python scripts.
-- **Tailwind & Next.js font integration** for consistent styling.
+```bash
+npm install          # Install dependencies
+npm run dev          # Start dev server on localhost:3000
+npm run build        # Production build
+npm run start        # Serve production build
+```
 
----
-This summary is stored in the repository for quick reference by future Claude Code sessions. Feel free to review or update it as the architecture evolves.
+## Architecture
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 16 (App Router), React 19, Tailwind v4, Framer Motion |
+| Backend | Next.js API Routes (serverless) |
+| Database | Supabase (PostgreSQL) |
+| AI | Google Gemini (SQL Agent mode) |
+| Bot | Python discord.py (Skipio) |
+| Hosting | Vercel |
+
+## Key Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page with scroll experience |
+| `/standings` | Team standings by group |
+| `/leaderboard` | Player stat rankings |
+| `/matches` | Match browser with scoreboards |
+| `/players` | Player search & deep analytics |
+| `/teams` | Team search & analytics |
+| `/playoffs` | Playoff bracket |
+| `/skipio` | Custom ELO leaderboard |
+| `/admin` | Admin panel (auth-gated) |
+
+## Project Structure
+
+```
+src/app/         → Pages & API routes
+src/components/  → React components (25+)
+src/lib/         → Data layer, AI, ML model
+Skipio-bot/      → Discord bot
+training/        → ML model training
+tools/           → Season transition & utility scripts
+docs/            → Documentation & diagrams
+```
+
+## Documentation Index
+
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — System architecture with Mermaid diagrams
+- [DATA_FLOW.md](docs/DATA_FLOW.md) — Database schema & data fetching patterns
+- [COMPONENTS.md](docs/COMPONENTS.md) — Component dependency map
+- [API_REFERENCE.md](docs/API_REFERENCE.md) — All API routes documented
+- [Bot Architecture](docs/bot/ARCHITECTURE.md) — Discord bot architecture
+- [Skipio ELO System](docs/SKIPIO_ELO_SYSTEM.md) — Custom ELO math docs
+- [Season Transition Guide](tools/season-transition/SEASON_TRANSITION_GUIDE.md) — How to move between seasons
+
+## Key Design Decisions
+
+- **App Router** for server components and data-first rendering
+- **Supabase** (PostgreSQL) as the single source of truth for all data
+- **Season-aware queries** — every data function accepts `seasonId` parameter
+- **AI SQL Agent** — the AI analyst queries the database directly via `exec_sql` RPC
+- **Server/Client split** — pages fetch data server-side, pass to client components for interactivity

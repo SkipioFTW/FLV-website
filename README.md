@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FLV Valorant Tournament Portal
 
-## Getting Started
+A premium tournament management and analytics platform for the French League Valorant (FLV) community.
 
-First, run the development server:
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![React](https://img.shields.io/badge/React-19-blue)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-green)
+![Vercel](https://img.shields.io/badge/Deployed-Vercel-black)
+
+---
+
+## ✨ Features
+
+- **Live Standings** — Real-time group standings with custom point system
+- **Player Analytics** — ACS, K/D, ADR, KAST, agent pool, performance trends
+- **Team Analytics** — Map win rates, roster analysis, head-to-head comparisons
+- **Skipio ELO** — Custom peer-normalized performance rating system
+- **AI League Analyst** — Ask questions about any team, player, or matchup
+- **Broadcast Overlays** — OBS-ready overlays for live tournament streaming
+- **Match Predictions** — ML-powered match outcome predictions
+- **Discord Bot** — Full-featured tournament bot with slash commands
+- **Admin Panel** — Match management, data import, and database tools
+
+## 🚀 Quick Start
 
 ```bash
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Production build
+npm run build && npm run start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env.local` and fill in:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_key
+GEMINI_API_KEY=your_gemini_key
+```
 
-## Learn More
+## 📁 Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+├── src/
+│   ├── app/              # Next.js App Router (pages + API)
+│   ├── components/       # React components (25+)
+│   └── lib/              # Data layer, AI, ML model
+├── Skipio-bot/           # Discord bot (Python)
+├── training/             # ML model training
+├── tools/
+│   ├── season-transition/ # Season migration scripts & guide
+│   └── one-time/          # Archived utility scripts
+└── docs/                  # Documentation & architecture diagrams
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📚 Documentation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System overview with Mermaid diagrams |
+| [Data Flow](docs/DATA_FLOW.md) | Database schema & query patterns |
+| [Components](docs/COMPONENTS.md) | Component dependency map |
+| [API Reference](docs/API_REFERENCE.md) | All API endpoints |
+| [Bot Architecture](docs/bot/ARCHITECTURE.md) | Discord bot structure & commands |
+| [Skipio ELO](docs/SKIPIO_ELO_SYSTEM.md) | Custom ELO system math |
+| [Season Transition](tools/season-transition/SEASON_TRANSITION_GUIDE.md) | Step-by-step season migration guide |
 
-## Deploy on Vercel
+## 🔄 Season Transition
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+When it's time to move to a new season (e.g. S24 → S25):
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Read the [Season Transition Guide](tools/season-transition/SEASON_TRANSITION_GUIDE.md)
+2. Update the migration scripts in `tools/season-transition/`
+3. Run the migration
+4. Verify on the portal
+
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router) |
+| UI | React 19, Tailwind CSS v4, Framer Motion |
+| Database | Supabase (PostgreSQL) |
+| AI | Google Gemini |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Bot | Python discord.py |
+| Hosting | Vercel |
+
+## 📄 License
+
+Private — FLV Community use only.

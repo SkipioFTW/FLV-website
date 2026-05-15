@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSearchParams, usePathname } from "next/navigation";
 import { getSeasons, getDefaultSeason } from "@/lib/data";
 import SeasonSelector from "./SeasonSelector";
-import { Menu, MoreHorizontal, ChevronRight, LayoutGrid, Trophy, Users, Shield, Zap, Info, Lock } from "lucide-react";
+import { Menu, MoreHorizontal, ChevronRight, LayoutGrid, Trophy, Users, Shield, Zap, Lock } from "lucide-react";
 
 const mainNavItems = [
     { name: "Overview", href: "/", icon: LayoutGrid },
@@ -31,6 +31,7 @@ function NavbarContent() {
     const [currentSeasonId, setCurrentSeasonId] = useState<string>("");
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [isScrolled, setIsScrolled] = useState(false);
     const searchParams = useSearchParams();
     const pathname = usePathname();
     const moreRef = useRef<HTMLDivElement>(null);
@@ -51,6 +52,15 @@ function NavbarContent() {
         loadSeasons();
     }, [searchParams]);
 
+    // Scroll detection for navbar background
+    useEffect(() => {
+        const handleScroll = () => {
+            setIsScrolled(window.scrollY > 50);
+        };
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
@@ -68,7 +78,11 @@ function NavbarContent() {
 
     return (
         <nav className="fixed top-0 left-0 w-full z-50 px-6 py-4">
-            <div className="max-w-7xl mx-auto flex items-center justify-between glass px-6 py-2.5 rounded-2xl border border-white/5 shadow-2xl relative">
+            <div className={`max-w-7xl mx-auto flex items-center justify-between px-6 py-2.5 rounded-2xl shadow-2xl relative transition-all duration-500 ${
+                isScrolled
+                    ? 'navbar-scrolled'
+                    : 'glass border border-white/5'
+            }`}>
                 {/* Logo */}
                 <Link href={getFullHref('/')} className="flex items-center gap-3 group shrink-0 mr-4">
                     <div className="w-9 h-9 bg-val-red rotate-45 flex items-center justify-center group-hover:rotate-90 transition-transform duration-500">
@@ -129,7 +143,7 @@ function NavbarContent() {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 10 }}
-                                    className="absolute top-full mt-2 right-0 w-48 glass border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5 z-50"
+                                    className="absolute top-full mt-2 right-0 w-48 glass-strong border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5 z-50"
                                 >
                                     {moreNavItems.map((item) => (
                                         <Link
@@ -169,6 +183,9 @@ function NavbarContent() {
                         <Menu className="w-5 h-5 text-foreground" />
                     </button>
                 </div>
+
+                {/* Animated bottom line (visible on scroll) */}
+                <div className="navbar-line" />
 
                 {/* Mobile Menu (Overlay) */}
                 <AnimatePresence>
