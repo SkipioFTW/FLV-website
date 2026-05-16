@@ -190,23 +190,23 @@ export default function AdminPage() {
                             ))}
                         </select>
                         <div className="flex glass p-1 rounded-lg">
-                        {(['pending', 'schedule', 'playoffs', 'editor', 'players', 'snapshot'] as const).map((tab) => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={`px-6 py-2 rounded-md font-display text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab
-                                    ? 'bg-val-red text-white shadow-[0_0_15px_rgba(255,70,85,0.4)]'
-                                    : 'text-foreground/40 hover:text-foreground/80'
-                                    }`}
-                            >
-                                {tab === 'snapshot' ? 'AI ANALYST' : tab}
-                                {tab === 'pending' && (pending.matches.length + pending.players.length > 0) && (
-                                    <span className="ml-2 px-1.5 py-0.5 bg-white text-val-red rounded-full text-[10px]">
-                                        {pending.matches.length + pending.players.length}
-                                    </span>
-                                )}
-                            </button>
-                        ))}
+                            {(['pending', 'schedule', 'playoffs', 'editor', 'players', 'snapshot'] as const).map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={`px-6 py-2 rounded-md font-display text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab
+                                        ? 'bg-val-red text-white shadow-[0_0_15px_rgba(255,70,85,0.4)]'
+                                        : 'text-foreground/40 hover:text-foreground/80'
+                                        }`}
+                                >
+                                    {tab === 'snapshot' ? 'AI ANALYST' : tab}
+                                    {tab === 'pending' && (pending.matches.length + pending.players.length > 0) && (
+                                        <span className="ml-2 px-1.5 py-0.5 bg-white text-val-red rounded-full text-[10px]">
+                                            {pending.matches.length + pending.players.length}
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </header>
@@ -418,7 +418,7 @@ function ScheduleManager({
     const [bulkFormat, setBulkFormat] = useState<'BO1' | 'BO3' | 'BO5'>('BO1');
     const [parsedMatches, setParsedMatches] = useState<any[]>([]);
     const [parsedErrors, setParsedErrors] = useState<string[]>([]);
-    
+
     const [week, setWeek] = useState(1);
     const [group, setGroup] = useState("");
     const [format, setFormat] = useState<'BO1' | 'BO3' | 'BO5'>('BO1');
@@ -452,7 +452,7 @@ function ScheduleManager({
             const [ta, tb] = line.split(/vs/i).map(s => s.trim());
             const teamA = teams.find(t => t.name.toLowerCase() === ta.toLowerCase() || t.tag.toLowerCase() === ta.toLowerCase());
             const teamB = teams.find(t => t.name.toLowerCase() === tb.toLowerCase() || t.tag.toLowerCase() === tb.toLowerCase());
-            
+
             if (!teamA) {
                 errors.push(`Line ${idx + 1}: Could not find Team A "${ta}".`);
                 return;
@@ -659,7 +659,7 @@ function ScheduleManager({
                         placeholder={"Team A vs Team B\nTeam C vs Team D"}
                         className="w-full h-40 bg-white/5 border border-white/10 rounded p-4 text-sm font-mono focus:border-val-blue outline-none transition-colors resize-none"
                     />
-                    
+
                     {parsedMatches.length === 0 && parsedErrors.length === 0 ? (
                         <button
                             disabled={!bulkText.trim() || processing}
@@ -688,7 +688,7 @@ function ScheduleManager({
                                     </div>
                                 )}
                             </div>
-                            
+
                             <div className="flex gap-4">
                                 <button
                                     onClick={() => { setParsedMatches([]); setParsedErrors([]); }}
@@ -1315,11 +1315,11 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
     const [t2Rounds, setT2Rounds] = useState(0);
     const [winnerId, setWinnerId] = useState<number | null>(null);
     const [team1Rows, setTeam1Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; plants?: number; defuses?: number; survived?: number; traded?: number; clutches?: number; clutches_details?: any; ability_casts?: any; conf: string }>>([]);
-    const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; plants?: number; defuses?: number; survived?: number; traded?: number; clutches?: number; clutches_details?: any; ability_casts?: any; conf: string }>>([]); 
+    const [team2Rows, setTeam2Rows] = useState<Array<{ player_id?: number; is_sub: boolean; subbed_for_id?: number; agent?: string; acs: number; kills: number; deaths: number; assists: number; adr?: number; kast?: number; hs_pct?: number; fk?: number; fd?: number; mk?: number; dd_delta?: number; plants?: number; defuses?: number; survived?: number; traded?: number; clutches?: number; clutches_details?: any; ability_casts?: any; conf: string }>>([]);
     const [mapRoundsData, setMapRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
     const [mapForfeit, setMapForfeit] = useState(false);
-    const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O", "Breach", "Chamber", "Deadlock", "Fade", "Gekko", "Phoenix", "Veto", "Waylay", "Tejo", "Miks"];
+    const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O", "Breach", "Chamber", "Deadlock", "Fade", "Gekko", "Phoenix", "Veto", "Waylay", "Tejo", "Miks", "Vyse"];
 
     useEffect(() => {
         import("@/lib/data").then(({ getAllMatches }) => {
@@ -1649,7 +1649,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                                 Match Forfeit
                             </label>
                             {forfeit && (
-                                <select 
+                                <select
                                     value={forfeitWinnerId}
                                     onChange={e => setForfeitWinnerId(parseInt(e.target.value))}
                                     className="w-full bg-white/5 border border-white/10 rounded p-1 text-xs text-val-red outline-none focus:border-val-red"
