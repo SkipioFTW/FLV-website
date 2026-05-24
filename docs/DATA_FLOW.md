@@ -6,29 +6,37 @@ This document explains how data flows through the application, from the Supabase
 
 ## Database Schema
 
+> These tables match the live Supabase schema exactly. Substitutions are recorded
+> inline in `match_stats_map` via `is_sub` / `subbed_for_id` — there is no
+> separate substitutions table.
+
 ```mermaid
 erDiagram
     SEASONS {
         text id PK "e.g. S24"
         text name "Season 24"
         boolean is_active
+        int winner_id FK
     }
 
     TEAMS {
         int id PK
-        text tag "Team abbreviation"
-        text name "Full team name"
-        text group_name "Group A, B, etc."
+        text tag
+        text name
+        text group_name
         text captain
+        text co_captain
         text logo_path
     }
 
     PLAYERS {
         int id PK
         text name
-        text riot_id "Tag#Line"
-        text rank "Current rank"
-        text uuid "Tracker UUID"
+        text riot_id
+        text rank
+        text tracker_link
+        text discord_handle
+        text uuid "Discord snowflake"
         int default_team_id FK
     }
 
@@ -39,15 +47,21 @@ erDiagram
         int team1_id FK
         int team2_id FK
         int winner_id FK
-        text status "scheduled|completed|live"
-        text format "BO1|BO3|BO5"
-        int maps_played
-        text match_type "regular|playoff"
-        int playoff_round
-        int bracket_pos
         text season_id FK
         int score_t1
         int score_t2
+        text status "scheduled|completed|live"
+        text format "BO1|BO3|BO5"
+        text maps_played
+        text match_type "regular|playoff"
+        int playoff_round
+        int bracket_pos
+        text bracket_label
+        int is_forfeit
+        boolean reported
+        text channel_id
+        text submitter_id
+        text[] tracker_ids
     }
 
     MATCH_MAPS {
@@ -58,14 +72,17 @@ erDiagram
         int team1_rounds
         int team2_rounds
         int winner_id
+        int is_forfeit
     }
 
     MATCH_STATS_MAP {
         int id PK
         int match_id FK
         int map_index
-        int player_id FK
         int team_id FK
+        int player_id FK
+        int is_sub "1 if substitution"
+        int subbed_for_id "original player id"
         text agent
         int acs
         int kills
@@ -74,18 +91,50 @@ erDiagram
         float adr
         float kast
         float hs_pct
-        int fk
-        int fd
+        int fk "first kills"
+        int fd "first deaths"
+        int mk "multi-kills"
+        float dd_delta
         int plants
         int defuses
-        int clutches
         int survived
+        int traded
+        int clutches
+        jsonb clutches_details
+        jsonb ability_casts
+    }
+
+    MATCH_ROUNDS {
+        uuid id PK
+        int match_id FK
+        int map_index
+        int round_number
+        int winning_team_id FK
+        text win_type
+        boolean plant
+        boolean defuse
+        int economy_t1
+        int economy_t2
+    }
+
+    MATCH_PLAYER_ROUNDS {
+        uuid id PK
+        int match_id FK
+        int map_index
+        int round_number
+        int player_id FK
+        int kills
+        int damage
+        text weapon
+        int spent
     }
 
     TEAM_HISTORY {
         int id PK
         int team_id FK
         text season_id FK
+        text captain
+        text co_captain
         text group_name
     }
 
@@ -101,29 +150,41 @@ erDiagram
         int player_id FK
         int team_id FK
         text season_id FK
+        timestamp joined_at
+        timestamp left_at
         boolean is_current
-    }
-
-    MATCH_SUBSTITUTIONS {
-        int id PK
-        int match_id FK
-        int map_index
-        int original_player_id FK
-        int sub_player_id FK
-        int team_id FK
     }
 
     SEASONS ||--o{ MATCHES : "season_id"
     SEASONS ||--o{ TEAM_HISTORY : "season_id"
     SEASONS ||--o{ PLAYER_HISTORY : "season_id"
-    TEAMS ||--o{ MATCHES : "team1_id / team2_id"
+    SEASONS ||--o{ PLAYER_TEAM_HISTORY : "season_id"
+    TEAMS ||--o{ MATCHES : "team1_id"
     TEAMS ||--o{ TEAM_HISTORY : "team_id"
+    TEAMS ||--o{ PLAYER_TEAM_HISTORY : "team_id"
+    TEAMS ||--o{ MATCH_ROUNDS : "winning_team_id"
     PLAYERS ||--o{ MATCH_STATS_MAP : "player_id"
     PLAYERS ||--o{ PLAYER_HISTORY : "player_id"
+    PLAYERS ||--o{ PLAYER_TEAM_HISTORY : "player_id"
+    PLAYERS ||--o{ MATCH_PLAYER_ROUNDS : "player_id"
     MATCHES ||--o{ MATCH_MAPS : "match_id"
     MATCHES ||--o{ MATCH_STATS_MAP : "match_id"
-    MATCHES ||--o{ MATCH_SUBSTITUTIONS : "match_id"
+    MATCHES ||--o{ MATCH_ROUNDS : "match_id"
+    MATCHES ||--o{ MATCH_PLAYER_ROUNDS : "match_id"
 ```
+
+### Other tables (not part of the main data flow)
+
+| Table | Purpose |
+|-------|---------|
+| `admins` | Admin panel credentials (username + bcrypt hash) |
+| `agents` | Agent name lookup table |
+| `ai_scenarios` | Stored AI-generated "What-If" scenarios |
+| `league_snapshots` | Point-in-time JSON snapshots of all tournament data (used by AI) |
+| `bot_replies` | Discord bot reply cache per user |
+| `pending_matches` | Matches submitted by players awaiting admin approval |
+| `pending_players` | Player registrations awaiting admin approval |
+| `session_activity` | Active admin portal sessions |
 
 ---
 
@@ -226,7 +287,9 @@ const isAllTime = activeSeason === 'all';
 let query = supabase.from('matches').select('*').eq('status', 'completed');
 
 if (!isAllTime) {
-    // S23 special case: old matches may have NULL season_id
+    // S23 legacy: matches created before multi-season support have season_id = NULL.
+    // The transition script tags these as 'S23'. Once transition.py has been run,
+    // the OR clause below is no longer needed — but it is kept as a safety net.
     const filter = activeSeason === 'S23'
         ? 'season_id.eq.S23,season_id.is.null'
         : `season_id.eq.${activeSeason}`;
@@ -234,7 +297,13 @@ if (!isAllTime) {
 }
 ```
 
-This pattern is repeated across `getStandings`, `getLeaderboard`, `getMatches`, and all other season-aware functions.
+This pattern is used in `getStandings`, `getLeaderboard`, `getMatches`, and all other
+season-aware functions.
+
+> **Note for S25+:** After running `tools/season-transition/transition.py` for S24→S25,
+> all S24 matches will have `season_id = 'S24'` set explicitly. No matches should ever
+> have `season_id = NULL` again. The S23 special-case branch above becomes a no-op for
+> any future season but is harmless to keep.
 
 ---
 
