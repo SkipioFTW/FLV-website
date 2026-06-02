@@ -430,11 +430,21 @@ export function parseHenrikDevJson(
         const data = js?.data || {};
         const metadata = data?.metadata || {};
         const playersData = data?.players || {};
-        const allPlayers = playersData?.all_players || [];
-        const roundsData = data?.rounds || [];
-        const teamsData = data?.teams || {};
         
-        let map_name = metadata?.map || "Unknown";
+        // Handle HenrikDev V4 where data.players is directly an array
+        const allPlayers: any[] = Array.isArray(playersData) ? playersData : (playersData?.all_players || []);
+        const roundsData = data?.rounds || [];
+        const teamsData = data?.teams || [];
+        const killsData = data?.kills || [];
+        
+        let map_name = "Unknown";
+        if (metadata?.map) {
+            if (typeof metadata.map === 'object') {
+                map_name = metadata.map.name || "Unknown";
+            } else {
+                map_name = metadata.map;
+            }
+        }
         map_name = map_name.charAt(0).toUpperCase() + map_name.slice(1);
         
         let hdevTeam1Team = 'Red';
@@ -444,8 +454,8 @@ export function parseHenrikDevJson(
             allPlayers.forEach((p: any) => {
                 const rid = lower(`${p.name}#${p.tag}`);
                 if (roster1Rids.includes(rid)) {
-                    if (lower(p.team) === 'red') redCount++;
-                    if (lower(p.team) === 'blue') blueCount++;
+                    if (lower(p.team_id || p.team) === 'red') redCount++;
+                    if (lower(p.team_id || p.team) === 'blue') blueCount++;
                 }
             });
             hdevTeam1Team = redCount >= blueCount ? 'Red' : 'Blue';
@@ -453,66 +463,183 @@ export function parseHenrikDevJson(
         
         let t1_rounds = 0;
         let t2_rounds = 0;
-        if (teamsData?.red && teamsData?.blue) {
-            if (hdevTeam1Team === 'Red') {
-                t1_rounds = teamsData.red.rounds_won || 0;
-                t2_rounds = teamsData.blue.rounds_won || 0;
-            } else {
-                t1_rounds = teamsData.blue.rounds_won || 0;
-                t2_rounds = teamsData.red.rounds_won || 0;
-            }
+        
+        let redTeam = Array.isArray(teamsData) ? teamsData.find((t: any) => lower(t.team_id) === 'red') : teamsData?.red;
+        let blueTeam = Array.isArray(teamsData) ? teamsData.find((t: any) => lower(t.team_id) === 'blue') : teamsData?.blue;
+        
+        const redRounds = redTeam?.rounds?.won !== undefined ? redTeam.rounds.won : (redTeam?.rounds_won || 0);
+        const blueRounds = blueTeam?.rounds?.won !== undefined ? blueTeam.rounds.won : (blueTeam?.rounds_won || 0);
+        
+        if (hdevTeam1Team === 'Red') {
+            t1_rounds = redRounds;
+            t2_rounds = blueRounds;
+        } else {
+            t1_rounds = blueRounds;
+            t2_rounds = redRounds;
         }
         
+        const roundsPlayed = roundsData.length || metadata.rounds_played || 1;
+
+        // Calculate plants and defuses per player
+        const plantsMap = new Map<string, number>();
+        const defusesMap = new Map<string, number>();
+        
+        roundsData.forEach((r: any) => {
+            if (r.plant && r.plant.player) {
+                const rid = lower(`${r.plant.player.name}#${r.plant.player.tag}`);
+                plantsMap.set(rid, (plantsMap.get(rid) || 0) + 1);
+            }
+            if (r.defuse && r.defuse.player) {
+                const rid = lower(`${r.defuse.player.name}#${r.defuse.player.tag}`);
+                defusesMap.set(rid, (defusesMap.get(rid) || 0) + 1);
+            }
+        });
+
+        // Calculate first kills and first deaths per player
+        const fkMap = new Map<string, number>();
+        const fdMap = new Map<string, number>();
+        
+        // Group kills by round
+        const roundKills: Record<number, any[]> = {};
+        killsData.forEach((k: any) => {
+            const rNum = k.round;
+            if (!roundKills[rNum]) {
+                roundKills[rNum] = [];
+            }
+            roundKills[rNum].push(k);
+        });
+
+        // For each round, find the earliest kill
+        Object.keys(roundKills).forEach((rKey) => {
+            const rNum = Number(rKey);
+            const killsInRound = roundKills[rNum];
+            if (killsInRound.length > 0) {
+                // sort by time_in_round_in_ms ascending
+                killsInRound.sort((a, b) => (a.time_in_round_in_ms || 0) - (b.time_in_round_in_ms || 0));
+                const firstKillEvent = killsInRound[0];
+                if (firstKillEvent.killer) {
+                    const kRid = lower(`${firstKillEvent.killer.name}#${firstKillEvent.killer.tag}`);
+                    fkMap.set(kRid, (fkMap.get(kRid) || 0) + 1);
+                }
+                if (firstKillEvent.victim) {
+                    const vRid = lower(`${firstKillEvent.victim.name}#${firstKillEvent.victim.tag}`);
+                    fdMap.set(vRid, (fdMap.get(vRid) || 0) + 1);
+                }
+            }
+        });
+
+        // Calculate multikills (3, 4, 5 kills in a single round)
+        const mkMap = new Map<string, number>();
+        Object.keys(roundKills).forEach((rKey) => {
+            const rNum = Number(rKey);
+            const killsInRound = roundKills[rNum];
+            const playerKillsInRound: Record<string, number> = {};
+            killsInRound.forEach((k: any) => {
+                if (k.killer) {
+                    const kRid = lower(`${k.killer.name}#${k.killer.tag}`);
+                    playerKillsInRound[kRid] = (playerKillsInRound[kRid] || 0) + 1;
+                }
+            });
+            Object.keys(playerKillsInRound).forEach((kRid) => {
+                if (playerKillsInRound[kRid] >= 3) {
+                    mkMap.set(kRid, (mkMap.get(kRid) || 0) + 1);
+                }
+            });
+        });
+
         allPlayers.forEach((p: any) => {
             const rid = lower(`${p.name}#${p.tag}`);
             if (!rid) return;
             
-            const pTeam = lower(p.team) === lower(hdevTeam1Team) ? 1 : 2;
-            const agent = p.character;
+            const pTeam = lower(p.team_id || p.team) === lower(hdevTeam1Team) ? 1 : 2;
+            const agent = p.agent?.name || p.character || "Unknown";
             
             const stats = p.stats || {};
-            const acs = Math.round((stats.score || 0) / (metadata.rounds_played || 1));
+            const acs = Math.round((stats.score || 0) / roundsPlayed);
             const k = stats.kills || 0;
             const d = stats.deaths || 0;
             const a = stats.assists || 0;
-            const hs_pct = stats.headshots ? Math.round((stats.headshots / (stats.headshots + stats.bodyshots + stats.legshots || 1)) * 100) : 0;
             
+            const shots = stats.shots || {};
+            const totalShots = (shots.head || stats.headshots || 0) + (shots.body || stats.bodyshots || 0) + (shots.leg || stats.legshots || 0);
+            const hs_pct = totalShots > 0 ? Math.round(((shots.head || stats.headshots || 0) / totalShots) * 100) : 0;
+            
+            const adr = Math.round((stats.damage?.dealt || 0) / roundsPlayed);
+            const dd_delta = Math.round(((stats.damage?.dealt || 0) - (stats.damage?.received || 0)) / roundsPlayed);
+
+            const fk = fkMap.get(rid) || 0;
+            const fd = fdMap.get(rid) || 0;
+            const mk = mkMap.get(rid) || 0;
+            const plants = plantsMap.get(rid) || 0;
+            const defuses = defusesMap.get(rid) || 0;
+
+            const ability_casts = {
+                grenade: p.ability_casts?.grenade || 0,
+                ability1: p.ability_casts?.ability1 || 0,
+                ability2: p.ability_casts?.ability2 || 0,
+                ultimate: p.ability_casts?.ultimate || 0
+            };
+
             suggestions[rid] = {
                 team_num: pTeam,
                 agent,
                 acs, k, d, a,
-                adr: 0, kast: 0, hs_pct,
-                fk: 0, fd: 0, mk: 0, dd_delta: 0,
-                plants: 0, defuses: 0, survived: 0, traded: 0, clutches: 0,
+                adr, kast: 0, hs_pct,
+                fk, fd, mk, dd_delta,
+                plants, defuses, survived: 0, traded: 0, clutches: 0,
                 clutches_details: { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0 },
-                ability_casts: { grenade: 0, ability1: 0, ability2: 0, ultimate: 0 }
+                ability_casts
             };
         });
         
         roundsData.forEach((r: any) => {
-            const rNum = r.id;
-            const pWinTeam = lower(r.winning_team) === lower(hdevTeam1Team) ? team1_id : team2_id;
+            const rNum = r.id !== undefined ? r.id : r.round_number;
+            const winningTeamStr = r.winning_team || "";
+            const pWinTeam = lower(winningTeamStr) === lower(hdevTeam1Team) ? team1_id : team2_id;
+            
             roundsArr.push({
-                round_number: rNum,
+                round_number: rNum + 1,
                 winning_team_id: pWinTeam,
-                win_type: r.end_type || "Elimination",
-                plant: r.bomb_planted || false,
-                defuse: r.bomb_defused || false,
+                win_type: r.result || r.end_type || "Elimination",
+                plant: r.plant !== undefined ? !!r.plant : (r.bomb_planted || false),
+                defuse: r.defuse !== undefined ? !!r.defuse : (r.bomb_defused || false),
                 economy_t1: 0,
                 economy_t2: 0
             });
             
-            if (r.player_stats) {
-                r.player_stats.forEach((ps: any) => {
-                    const pr = allPlayers.find((ap: any) => ap.puuid === ps.player_puuid);
-                    if (pr) {
+            const rStats = r.stats || r.player_stats || [];
+            if (Array.isArray(rStats)) {
+                rStats.forEach((ps: any) => {
+                    const pName = ps.player?.name || "";
+                    const pTag = ps.player?.tag || "";
+                    const pPuuid = ps.player?.puuid || ps.player_puuid;
+                    
+                    let targetRid = lower(`${pName}#${pTag}`);
+                    if (!targetRid && pPuuid) {
+                        const pr = allPlayers.find((ap: any) => ap.puuid === pPuuid);
+                        if (pr) {
+                            targetRid = lower(`${pr.name}#${pr.tag}`);
+                        }
+                    }
+                    
+                    if (targetRid) {
+                        let roundDamage = 0;
+                        if (Array.isArray(ps.damage_events)) {
+                            ps.damage_events.forEach((de: any) => {
+                                roundDamage += de.damage || 0;
+                            });
+                        }
+                        
+                        const weapon = ps.economy?.weapon?.name || null;
+                        const spent = ps.economy?.loadout_value || 0;
+                        
                         playerRoundsArr.push({
-                            rid: lower(`${pr.name}#${pr.tag}`),
-                            round_number: rNum,
-                            kills: ps.kills || 0,
-                            damage: ps.damage || 0,
-                            spent: 0,
-                            weapon: null
+                            rid: targetRid,
+                            round_number: rNum + 1,
+                            kills: ps.stats?.kills || ps.kills || 0,
+                            damage: roundDamage,
+                            spent,
+                            weapon
                         });
                     }
                 });
