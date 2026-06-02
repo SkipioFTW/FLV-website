@@ -44,3 +44,6 @@ tools/one-time/*.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+database_schema.txt
+get_match.py
+

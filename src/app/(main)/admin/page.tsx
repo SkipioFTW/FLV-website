@@ -12,6 +12,7 @@ import {
     updateMatch,
     saveMapResults,
     parseTrackerJson,
+    parseHenrikDevJson,
     getDashboardStats,
     getSeasons,
     type GlobalStats
@@ -911,7 +912,7 @@ function PlayoffBracketEditor({
                                         const payload = [];
                                         for (let i = existing + 1; i <= 8; i++) {
                                             payload.push({
-                                                week: 0,
+                                                week: 7,
                                                 group_name: 'Playoffs',
                                                 team1_id: null,
                                                 team2_id: null,
@@ -984,7 +985,7 @@ function PlayoffBracketEditor({
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
-                                                    week: 0,
+                                                    week: 8,
                                                     group_name: 'Playoffs',
                                                     team1_id: byeTeam || null,
                                                     team2_id: null,
@@ -1319,6 +1320,8 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
     const [mapRoundsData, setMapRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
     const [mapForfeit, setMapForfeit] = useState(false);
+    const [formatLocked, setFormatLocked] = useState(false);
+    const [apiRegion, setApiRegion] = useState('na');
     const agentsList = ["Jett", "Viper", "Sage", "Sova", "Killjoy", "Cypher", "Omen", "Brimstone", "Raze", "Reyna", "Skye", "Astra", "Yoru", "Neon", "Harbor", "Fade", "Iso", "Clove", "KAY/O", "Breach", "Chamber", "Deadlock", "Fade", "Gekko", "Phoenix", "Veto", "Waylay", "Tejo", "Miks", "Vyse"];
 
     useEffect(() => {
@@ -1344,7 +1347,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
         } catch { }
     }, []);
 
-    const applyMatchData = async () => {
+    const applyMatchData = async (useApi = false) => {
         try {
             setSaving(true);
             const sel = allMatches.find(m => m.id === matchId);
@@ -1365,13 +1368,24 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                 const cleaned = targetLink.includes("tracker.gg") ? targetLink.match(/match\/([A-Za-z0-9\-]+)/)?.[1] || targetLink : targetLink.replace(/[^A-Za-z0-9\-]/g, "");
 
                 setStatus(`Fetching data for Map ${mapIndex + 1}...`);
-                const r = await fetch(`/api/github/matches/resolve?mid=${encodeURIComponent(cleaned)}`);
-                if (!r.ok) {
-                    const txt = await r.text();
-                    setStatus(`Error fetching Map ${mapIndex + 1}: ${txt}`);
-                    return;
+                
+                if (useApi) {
+                    const r = await fetch(`/api/henrikdev/match?mid=${encodeURIComponent(cleaned)}&region=${apiRegion}`);
+                    if (!r.ok) {
+                        const txt = await r.text();
+                        setStatus(`Error fetching from HenrikDev API: ${txt}`);
+                        return;
+                    }
+                    json = await r.json();
+                } else {
+                    const r = await fetch(`/api/github/matches/resolve?mid=${encodeURIComponent(cleaned)}`);
+                    if (!r.ok) {
+                        const txt = await r.text();
+                        setStatus(`Error fetching Map ${mapIndex + 1}: ${txt}`);
+                        return;
+                    }
+                    json = await r.json();
                 }
-                json = await r.json();
             } else {
                 setStatus("Error: No match data source provided");
                 return;
@@ -1382,13 +1396,17 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
             const roster1Rids = roster1.map(p => String(p.riot_id || "").trim().toLowerCase()).filter(Boolean);
             const roster2Rids = roster2.map(p => String(p.riot_id || "").trim().toLowerCase()).filter(Boolean);
 
-            const out = parseTrackerJson(json, sel.team1.id, sel.team2.id, roster1Rids, roster2Rids, mapIndex);
+            const out = useApi 
+                ? parseHenrikDevJson(json, sel.team1.id, sel.team2.id, roster1Rids, roster2Rids, mapIndex)
+                : parseTrackerJson(json, sel.team1.id, sel.team2.id, roster1Rids, roster2Rids, mapIndex);
 
-            const mapsArr = json?.maps || json?.data?.maps || [];
-            if (Array.isArray(mapsArr)) {
-                if (mapsArr.length <= 1) setFormat('BO1');
-                else if (mapsArr.length <= 3) setFormat('BO3');
-                else setFormat('BO5');
+            if (!formatLocked) {
+                const mapsArr = json?.maps || json?.data?.maps || [];
+                if (Array.isArray(mapsArr)) {
+                    if (mapsArr.length <= 1) setFormat('BO1');
+                    else if (mapsArr.length <= 3) setFormat('BO3');
+                    else setFormat('BO5');
+                }
             }
 
             setMapName(out.map_name);
@@ -1621,7 +1639,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                         </select>
                         <MatchSearchSelect
                             value={matchId}
-                            onChange={setMatchId}
+                            onChange={id => { setMatchId(id); setFormatLocked(false); }}
                             options={allMatches
                                 .filter(m => selectedWeek === 0 ? m.match_type === 'playoff' : m.week === selectedWeek)
                                 .map(m => ({
@@ -1635,7 +1653,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                             <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Format</label>
                             <select
                                 value={format}
-                                onChange={e => setFormat(e.target.value as any)}
+                                onChange={e => { setFormat(e.target.value as any); setFormatLocked(true); }}
                                 className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm text-white outline-none focus:border-val-red"
                             >
                                 <option value="BO1" className="bg-background">BO1</option>
@@ -1674,11 +1692,31 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                                 placeholder="Paste one or more Tracker.gg URLs here..."
                                 className="w-full h-24 bg-white/5 border border-white/10 rounded p-2 text-xs text-white outline-none focus:border-val-blue resize-none"
                             />
+                            <div className="flex gap-2">
+                                <select
+                                    value={apiRegion}
+                                    onChange={e => setApiRegion(e.target.value)}
+                                    className="bg-white/5 border border-white/10 rounded px-2 text-xs text-white outline-none focus:border-val-blue"
+                                >
+                                    <option value="na" className="bg-background">NA</option>
+                                    <option value="eu" className="bg-background">EU</option>
+                                    <option value="ap" className="bg-background">AP</option>
+                                    <option value="kr" className="bg-background">KR</option>
+                                    <option value="latam" className="bg-background">LATAM</option>
+                                    <option value="br" className="bg-background">BR</option>
+                                </select>
+                                <button
+                                    onClick={async () => { await applyMatchData(true); }}
+                                    className="flex-1 py-2 bg-val-red text-white font-black uppercase tracking-widest text-[10px] rounded hover:bg-val-red/80 transition-colors"
+                                >
+                                    🔗 Auto-Fill via API
+                                </button>
+                            </div>
                             <button
-                                onClick={async () => { await applyMatchData(); }}
+                                onClick={async () => { await applyMatchData(false); }}
                                 className="w-full py-2 bg-val-blue text-white font-black uppercase tracking-widest text-[10px] rounded hover:bg-val-blue/80 transition-colors"
                             >
-                                Auto-Fill From Links
+                                Auto-Fill From Links (GitHub)
                             </button>
                             <div className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">
                                 Hint: Map index 1 will use the 1st link, index 2 the 2nd, etc.

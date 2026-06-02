@@ -405,6 +405,126 @@ export function parseTrackerJson(
     }
 }
 
+export const PLAYOFF_ROUND_WEEKS: Record<number, number> = {
+    1: 7,
+    2: 8,
+    3: 9,
+    4: 10,
+    5: 11
+};
+
+export function parseHenrikDevJson(
+    js: any,
+    team1_id: number,
+    team2_id: number,
+    roster1Rids?: string[],
+    roster2Rids?: string[],
+    mapIndex: number = 0
+) {
+    try {
+        const suggestions: Record<string, any> = {};
+        const roundsArr: any[] = [];
+        const playerRoundsArr: any[] = [];
+        const lower = (x: any) => String(x || "").trim().toLowerCase();
+        
+        const data = js?.data || {};
+        const metadata = data?.metadata || {};
+        const playersData = data?.players || {};
+        const allPlayers = playersData?.all_players || [];
+        const roundsData = data?.rounds || [];
+        const teamsData = data?.teams || {};
+        
+        let map_name = metadata?.map || "Unknown";
+        map_name = map_name.charAt(0).toUpperCase() + map_name.slice(1);
+        
+        let hdevTeam1Team = 'Red';
+        if (roster1Rids && roster1Rids.length > 0) {
+            let redCount = 0;
+            let blueCount = 0;
+            allPlayers.forEach((p: any) => {
+                const rid = lower(`${p.name}#${p.tag}`);
+                if (roster1Rids.includes(rid)) {
+                    if (lower(p.team) === 'red') redCount++;
+                    if (lower(p.team) === 'blue') blueCount++;
+                }
+            });
+            hdevTeam1Team = redCount >= blueCount ? 'Red' : 'Blue';
+        }
+        
+        let t1_rounds = 0;
+        let t2_rounds = 0;
+        if (teamsData?.red && teamsData?.blue) {
+            if (hdevTeam1Team === 'Red') {
+                t1_rounds = teamsData.red.rounds_won || 0;
+                t2_rounds = teamsData.blue.rounds_won || 0;
+            } else {
+                t1_rounds = teamsData.blue.rounds_won || 0;
+                t2_rounds = teamsData.red.rounds_won || 0;
+            }
+        }
+        
+        allPlayers.forEach((p: any) => {
+            const rid = lower(`${p.name}#${p.tag}`);
+            if (!rid) return;
+            
+            const pTeam = lower(p.team) === lower(hdevTeam1Team) ? 1 : 2;
+            const agent = p.character;
+            
+            const stats = p.stats || {};
+            const acs = Math.round((stats.score || 0) / (metadata.rounds_played || 1));
+            const k = stats.kills || 0;
+            const d = stats.deaths || 0;
+            const a = stats.assists || 0;
+            const hs_pct = stats.headshots ? Math.round((stats.headshots / (stats.headshots + stats.bodyshots + stats.legshots || 1)) * 100) : 0;
+            
+            suggestions[rid] = {
+                team_num: pTeam,
+                agent,
+                acs, k, d, a,
+                adr: 0, kast: 0, hs_pct,
+                fk: 0, fd: 0, mk: 0, dd_delta: 0,
+                plants: 0, defuses: 0, survived: 0, traded: 0, clutches: 0,
+                clutches_details: { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0 },
+                ability_casts: { grenade: 0, ability1: 0, ability2: 0, ultimate: 0 }
+            };
+        });
+        
+        roundsData.forEach((r: any) => {
+            const rNum = r.id;
+            const pWinTeam = lower(r.winning_team) === lower(hdevTeam1Team) ? team1_id : team2_id;
+            roundsArr.push({
+                round_number: rNum,
+                winning_team_id: pWinTeam,
+                win_type: r.end_type || "Elimination",
+                plant: r.bomb_planted || false,
+                defuse: r.bomb_defused || false,
+                economy_t1: 0,
+                economy_t2: 0
+            });
+            
+            if (r.player_stats) {
+                r.player_stats.forEach((ps: any) => {
+                    const pr = allPlayers.find((ap: any) => ap.puuid === ps.player_puuid);
+                    if (pr) {
+                        playerRoundsArr.push({
+                            rid: lower(`${pr.name}#${pr.tag}`),
+                            round_number: rNum,
+                            kills: ps.kills || 0,
+                            damage: ps.damage || 0,
+                            spent: 0,
+                            weapon: null
+                        });
+                    }
+                });
+            }
+        });
+        
+        return { suggestions, map_name, t1_rounds, t2_rounds, rounds: roundsArr, playerRounds: playerRoundsArr };
+    } catch {
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [] };
+    }
+}
+
 export type MatchEntry = {
     id: number;
     week: number;
@@ -2599,7 +2719,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
             } else {
                 // Create R2 match if it doesn't exist (winner waits for BYE seed)
                 await supabase.from('matches').insert({
-                    week: m.week || 0,
+                    week: PLAYOFF_ROUND_WEEKS[2] || 8,
                     group_name: 'Playoffs',
                     team1_id: null,
                     team2_id: winnerTeam,
@@ -2648,7 +2768,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                     if (upd.team1_id || upd.team2_id) await updateMatch(nm.id, upd);
                 } else {
                     await supabase.from('matches').insert({
-                        week: m.week || 0,
+                        week: PLAYOFF_ROUND_WEEKS[nextRound] || (nextRound + 6),
                         group_name: 'Playoffs',
                         team1_id: lowerPosWinner,
                         team2_id: upperPosWinner,
@@ -2811,19 +2931,28 @@ export async function applyBracketAdvancements(actions: BracketAction[]): Promis
                 if (act.team2_id !== undefined) payload.team2_id = act.team2_id;
                 await updateMatch(act.match_id, payload);
             } else if (act.kind === 'create') {
-                await supabase.from('matches').insert({
-                    week: 0,
-                    group_name: 'Playoffs',
-                    team1_id: act.team1_id ?? null,
-                    team2_id: act.team2_id ?? null,
-                    status: 'scheduled',
-                    format: 'BO3',
-                    maps_played: 0,
-                    match_type: 'playoff',
-                    playoff_round: act.target_round,
-                    bracket_pos: act.bracket_pos,
-                    bracket_label: `R${act.target_round} #${act.bracket_pos}`
-                } as any);
+                const { data: existing } = await supabase.from('matches').select('id').eq('match_type', 'playoff').eq('playoff_round', act.target_round).eq('bracket_pos', act.bracket_pos).limit(1);
+                
+                if (existing && existing.length > 0) {
+                    const payload: any = {};
+                    if (act.team1_id !== undefined) payload.team1_id = act.team1_id;
+                    if (act.team2_id !== undefined) payload.team2_id = act.team2_id;
+                    await updateMatch(existing[0].id, payload);
+                } else {
+                    await supabase.from('matches').insert({
+                        week: PLAYOFF_ROUND_WEEKS[act.target_round] || (act.target_round + 6),
+                        group_name: 'Playoffs',
+                        team1_id: act.team1_id ?? null,
+                        team2_id: act.team2_id ?? null,
+                        status: 'scheduled',
+                        format: 'BO3',
+                        maps_played: 0,
+                        match_type: 'playoff',
+                        playoff_round: act.target_round,
+                        bracket_pos: act.bracket_pos,
+                        bracket_label: `R${act.target_round} #${act.bracket_pos}`
+                    } as any);
+                }
             }
         }
         return true;
