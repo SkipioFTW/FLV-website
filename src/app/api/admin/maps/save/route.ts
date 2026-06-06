@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 function isAuthorized(req: NextRequest) {
+  const botSecret = req.headers.get('x-bot-secret');
+  if (botSecret && botSecret === process.env.BOT_SECRET) return true;
   const cookie = req.cookies.get('admin_session')?.value;
   const token = process.env.ADMIN_TOKEN;
   if (!cookie || !token) return false;
