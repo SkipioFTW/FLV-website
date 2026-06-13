@@ -1,5 +1,5 @@
 -- ============================================================
--- FLV Season Transition — SQL Reference
+-- FLV Season Transition — SQL Fallback Reference
 -- ============================================================
 -- PURPOSE: Run these statements manually in the Supabase SQL
 --          Editor if you prefer SQL over the Python script,
@@ -7,6 +7,8 @@
 --
 -- BEFORE RUNNING: Replace every occurrence of 'S24' and 'S25'
 --                 with your actual OLD and NEW season IDs.
+--
+-- Run in order — each section is safe to re-run (idempotent).
 -- ============================================================
 
 
@@ -47,6 +49,7 @@ WHERE p.rank IS NOT NULL
 
 -- ── STEP 3b: Snapshot player-team affiliations ────────────────
 -- Uses default_team_id as the source of truth for the old season.
+-- Fills missing entries; existing rows are left untouched.
 
 INSERT INTO public.player_team_history (player_id, team_id, season_id, is_current)
 SELECT
@@ -61,6 +64,13 @@ WHERE p.default_team_id IS NOT NULL
       WHERE pth.player_id = p.id
         AND pth.season_id = 'S24'
   );
+
+-- Mark ALL existing player_team_history entries for the old season
+-- as is_current=false (they are now historical, not active).
+
+UPDATE public.player_team_history
+SET is_current = false
+WHERE season_id = 'S24';
 
 
 -- ── STEP 3c: Snapshot team metadata ──────────────────────────
@@ -80,7 +90,25 @@ WHERE NOT EXISTS (
 );
 
 
--- ── STEP 4: Activate the new season ──────────────────────────
+-- ── STEP 4: Record the season champion (optional) ─────────────
+-- Set winner_id to the winning team's numeric ID.
+-- Replace 999 with the actual team ID before running.
+-- Skip this block if you don't know the winner yet.
+
+-- UPDATE public.seasons
+-- SET winner_id = 999
+-- WHERE id = 'S24';
+
+
+-- ── STEP 5: Deactivate old league snapshots ───────────────────
+-- Clears the active flag so the new season starts with no cached snapshot.
+
+UPDATE public.league_snapshots
+SET is_active = false
+WHERE is_active = true;
+
+
+-- ── STEP 6: Activate the new season ──────────────────────────
 
 -- Deactivate all seasons first
 UPDATE public.seasons SET is_active = false;
@@ -91,7 +119,7 @@ SET is_active = true
 WHERE id = 'S25';
 
 
--- ── STEP 5: Verification queries ─────────────────────────────
+-- ── STEP 7: Verification queries ─────────────────────────────
 -- Run these after to confirm everything looks correct.
 
 -- Count matches per season (should have 0 NULLs)
@@ -108,5 +136,14 @@ UNION ALL
 SELECT 'team_history',         season_id, COUNT(*)             FROM public.team_history           GROUP BY season_id
 ORDER BY tbl, season_id;
 
--- Show active season
-SELECT id, name, is_active FROM public.seasons ORDER BY id;
+-- Check player_team_history — all old season entries should be is_current=false
+SELECT season_id, is_current, COUNT(*) AS rows
+FROM public.player_team_history
+GROUP BY season_id, is_current
+ORDER BY season_id, is_current;
+
+-- Show seasons (active, champion)
+SELECT id, name, is_active, winner_id FROM public.seasons ORDER BY id;
+
+-- Show active league snapshots (should be 0 until regenerated)
+SELECT COUNT(*) AS active_snapshots FROM public.league_snapshots WHERE is_active = true;

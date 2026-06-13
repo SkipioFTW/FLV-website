@@ -47,3 +47,4 @@ next-env.d.ts
 database_schema.txt
 get_match.py
 
+tools/season-transition/.env.example

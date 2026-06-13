@@ -7,10 +7,14 @@ Consolidates ALL steps for transitioning from one FLV season to the next.
 WHAT IT DOES:
   1. Extracts the FULL current season's data from Supabase into a local
      SQLite database (.db file) as an offline archive.
-  2. Archives history tables: player_history, player_team_history, team_history.
-  3. Creates the new season record in Supabase.
-  4. Marks all untagged matches with the old season ID.
-  5. Flips the active season flag.
+  2. Tags any untagged matches with the old season ID.
+  3. Archives history tables: player_history, player_team_history, team_history.
+     - Fills any gaps using current player/team data.
+     - Marks all player_team_history entries for old season as is_current=false.
+  4. Records the season champion (winner_id) on the old season row.
+  5. Deactivates any active league_snapshots (they belong to the old season).
+  6. Creates the new season record in Supabase and activates it.
+  7. Verifies the database state post-migration.
 
 WHAT IT DOES NOT DO:
   - Add new teams / players for the new season (do that via the Admin Panel).
@@ -39,8 +43,8 @@ from pathlib import Path
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — edit these before running
 # ─────────────────────────────────────────────────────────────────────────────
-OLD_SEASON  = "S24"          # The season that is ENDING
-NEW_SEASON  = "S25"          # The NEW season to create
+OLD_SEASON      = "S24"          # The season that is ENDING
+NEW_SEASON      = "S25"          # The NEW season to create
 NEW_SEASON_NAME = "Season 25"
 
 # The SQLite archive file will be placed next to this script.
@@ -80,7 +84,7 @@ def load_env() -> tuple[str, str]:
 
 
 def confirm(prompt: str) -> bool:
-    """Ask user to confirm a destructive step."""
+    """Ask user to confirm a step."""
     ans = input(f"\n{'─'*60}\n{prompt}\nType YES to continue, anything else to skip: ").strip()
     return ans.upper() == "YES"
 
@@ -122,8 +126,9 @@ TABLES_TO_ARCHIVE = [
     "match_stats_map",
     "match_rounds",
     "match_player_rounds",
-    # Misc
-    "match_substitutions",  # may not exist yet — handled gracefully
+    # Misc (handled gracefully if absent)
+    "match_substitutions",
+    "league_snapshots",
 ]
 
 def create_sqlite_table(cur: sqlite3.Cursor, table: str, rows: list):
@@ -189,7 +194,6 @@ def step_tag_old_matches(supabase: "Client"):
     print(f"STEP 2 — Tag untagged matches as {OLD_SEASON}")
     print(f"{'═'*60}")
 
-    # Count untagged matches
     res = supabase.table("matches").select("id", count="exact").is_("season_id", "null").execute()
     untagged = res.count or 0
     print(f"  {untagged} untagged matches found.")
@@ -210,14 +214,15 @@ def step_tag_old_matches(supabase: "Client"):
 def step_archive_history(supabase: "Client"):
     """
     Snapshot player_history, player_team_history, and team_history for OLD_SEASON.
-    These rows should already exist if the admin panel was used correctly.
-    This step validates they exist and fills any gaps using current player/team data.
+    - Fills any gaps using current player/team live data.
+    - Marks all player_team_history entries for OLD_SEASON as is_current=false,
+      so they are correctly recorded as historical (not active) affiliations.
     """
     print(f"\n{'═'*60}")
     print(f"STEP 3 — Validate & fill history tables for {OLD_SEASON}")
     print(f"{'═'*60}")
 
-    # --- player_history ---
+    # ── player_history ──────────────────────────────────────────────────────
     res = supabase.table("player_history").select("player_id", count="exact").eq("season_id", OLD_SEASON).execute()
     existing = res.count or 0
     print(f"\n  player_history: {existing} entries for {OLD_SEASON}")
@@ -235,7 +240,7 @@ def step_archive_history(supabase: "Client"):
     else:
         print(f"  ✓ player_history complete.")
 
-    # --- player_team_history ---
+    # ── player_team_history ─────────────────────────────────────────────────
     res = supabase.table("player_team_history").select("player_id", count="exact").eq("season_id", OLD_SEASON).execute()
     existing = res.count or 0
     print(f"\n  player_team_history: {existing} entries for {OLD_SEASON}")
@@ -251,9 +256,18 @@ def step_archive_history(supabase: "Client"):
             supabase.table("player_team_history").insert(rows).execute()
             print(f"  ✓ Inserted {len(rows)} rows.")
     else:
-        print(f"  ✓ player_team_history complete.")
+        print(f"  ✓ player_team_history: no missing entries.")
 
-    # --- team_history ---
+    # Mark ALL existing player_team_history entries for old season as is_current=false.
+    # They are historical affiliations and should not appear as "current".
+    if confirm(f"Mark all player_team_history entries for {OLD_SEASON} as is_current=false?"):
+        supabase.table("player_team_history") \
+            .update({"is_current": False}) \
+            .eq("season_id", OLD_SEASON) \
+            .execute()
+        print(f"  ✓ All {OLD_SEASON} player_team_history entries marked as historical.")
+
+    # ── team_history ─────────────────────────────────────────────────────────
     res = supabase.table("team_history").select("team_id", count="exact").eq("season_id", OLD_SEASON).execute()
     existing = res.count or 0
     print(f"\n  team_history: {existing} entries for {OLD_SEASON}")
@@ -274,12 +288,85 @@ def step_archive_history(supabase: "Client"):
         print(f"  ✓ team_history complete.")
 
 
-# ── Step 4: Create new season ─────────────────────────────────────────────────
+# ── Step 4: Record the season champion ────────────────────────────────────────
+
+def step_record_champion(supabase: "Client"):
+    """
+    Optionally set the winner_id on the old season row.
+    The seasons table has a winner_id FK → teams.id column for this purpose.
+    """
+    print(f"\n{'═'*60}")
+    print(f"STEP 4 — Record season champion for {OLD_SEASON}")
+    print(f"{'═'*60}")
+
+    # Show current value
+    res = supabase.table("seasons").select("winner_id").eq("id", OLD_SEASON).execute()
+    current_winner = res.data[0].get("winner_id") if res.data else None
+    if current_winner:
+        print(f"  winner_id already set to team ID {current_winner}. Skipping.")
+        return
+
+    print("  No champion recorded yet for this season.")
+    print("  If you know the winning team's ID, you can set it now.")
+    print("  (Leave blank to skip — you can always update this later via the Admin Panel.)")
+
+    team_id_raw = input("  Enter the winning team's numeric ID (or press Enter to skip): ").strip()
+    if not team_id_raw:
+        print("  Skipped — no winner recorded.")
+        return
+
+    try:
+        team_id = int(team_id_raw)
+    except ValueError:
+        print("  Invalid input — must be a number. Skipping.")
+        return
+
+    # Verify the team exists
+    res = supabase.table("teams").select("id, name").eq("id", team_id).execute()
+    if not res.data:
+        print(f"  Team ID {team_id} not found. Skipping.")
+        return
+
+    team_name = res.data[0].get("name", "Unknown")
+    if confirm(f"Set winner of {OLD_SEASON} to '{team_name}' (ID {team_id})?"):
+        supabase.table("seasons").update({"winner_id": team_id}).eq("id", OLD_SEASON).execute()
+        print(f"  ✓ Season champion recorded: {team_name}")
+
+
+# ── Step 5: Deactivate old league snapshots ───────────────────────────────────
+
+def step_deactivate_snapshots(supabase: "Client"):
+    """
+    Deactivate any active league_snapshots so the new season starts clean.
+    Active snapshots belong to the old season's standings and should not
+    carry over as the 'current' snapshot for the new season.
+    """
+    print(f"\n{'═'*60}")
+    print("STEP 5 — Deactivate old league snapshots")
+    print(f"{'═'*60}")
+
+    try:
+        res = supabase.table("league_snapshots").select("id", count="exact").eq("is_active", True).execute()
+        active_count = res.count or 0
+        print(f"  {active_count} active league snapshot(s) found.")
+
+        if active_count == 0:
+            print("  Nothing to do.")
+            return
+
+        if confirm(f"Deactivate {active_count} active league snapshot(s)?"):
+            supabase.table("league_snapshots").update({"is_active": False}).eq("is_active", True).execute()
+            print(f"  ✓ All league snapshots deactivated.")
+    except Exception as e:
+        print(f"  league_snapshots — SKIPPED ({e})")
+
+
+# ── Step 6: Create new season ─────────────────────────────────────────────────
 
 def step_create_new_season(supabase: "Client"):
     """Insert the new season row and flip is_active flags."""
     print(f"\n{'═'*60}")
-    print(f"STEP 4 — Create {NEW_SEASON} and activate it")
+    print(f"STEP 6 — Create {NEW_SEASON} and activate it")
     print(f"{'═'*60}")
 
     # Check if season already exists
@@ -292,19 +379,19 @@ def step_create_new_season(supabase: "Client"):
         supabase.table("seasons").insert({"id": NEW_SEASON, "name": NEW_SEASON_NAME, "is_active": False}).execute()
         print(f"  ✓ Season {NEW_SEASON} created.")
 
-    # Deactivate old season
+    # Deactivate old season and activate new one
     if confirm(f"Deactivate {OLD_SEASON} and activate {NEW_SEASON}?"):
         supabase.table("seasons").update({"is_active": False}).eq("id", OLD_SEASON).execute()
         supabase.table("seasons").update({"is_active": True}).eq("id", NEW_SEASON).execute()
         print(f"  ✓ {OLD_SEASON} → inactive.  {NEW_SEASON} → ACTIVE.")
 
 
-# ── Step 5: Verify ────────────────────────────────────────────────────────────
+# ── Step 7: Verify ────────────────────────────────────────────────────────────
 
 def step_verify(supabase: "Client"):
     """Print a summary of the database state post-migration."""
     print(f"\n{'═'*60}")
-    print("STEP 5 — Post-migration verification")
+    print("STEP 7 — Post-migration verification")
     print(f"{'═'*60}")
 
     def count(table, filters=None):
@@ -314,11 +401,12 @@ def step_verify(supabase: "Client"):
                 q = q.eq(col, val)
         return (q.execute().count or 0)
 
-    seasons = fetch_all(supabase, "seasons", "id, name, is_active")
+    seasons = fetch_all(supabase, "seasons", "id, name, is_active, winner_id")
     print("\n  Seasons:")
     for s in seasons:
-        active = " ← ACTIVE" if s["is_active"] else ""
-        print(f"    {s['id']}  {s['name']}{active}")
+        active  = " ← ACTIVE" if s["is_active"] else ""
+        champ   = f"  (champion team_id={s['winner_id']})" if s.get("winner_id") else ""
+        print(f"    {s['id']}  {s['name']}{active}{champ}")
 
     old_matches = count("matches", {"season_id": OLD_SEASON})
     new_matches = count("matches", {"season_id": NEW_SEASON})
@@ -327,17 +415,23 @@ def step_verify(supabase: "Client"):
     print(f"\n  Matches:")
     print(f"    {OLD_SEASON}: {old_matches}  |  {NEW_SEASON}: {new_matches}  |  untagged: {untagged}")
 
-    ph_old = count("player_history",      {"season_id": OLD_SEASON})
-    ph_new = count("player_history",      {"season_id": NEW_SEASON})
-    pth_old= count("player_team_history", {"season_id": OLD_SEASON})
-    pth_new= count("player_team_history", {"season_id": NEW_SEASON})
-    th_old = count("team_history",        {"season_id": OLD_SEASON})
-    th_new = count("team_history",        {"season_id": NEW_SEASON})
+    ph_old  = count("player_history",      {"season_id": OLD_SEASON})
+    ph_new  = count("player_history",      {"season_id": NEW_SEASON})
+    pth_old = count("player_team_history", {"season_id": OLD_SEASON})
+    pth_new = count("player_team_history", {"season_id": NEW_SEASON})
+    th_old  = count("team_history",        {"season_id": OLD_SEASON})
+    th_new  = count("team_history",        {"season_id": NEW_SEASON})
 
-    print(f"\n  History tables (old/new):")
+    print(f"\n  History tables ({OLD_SEASON} / {NEW_SEASON}):")
     print(f"    player_history:       {ph_old} / {ph_new}")
     print(f"    player_team_history:  {pth_old} / {pth_new}")
     print(f"    team_history:         {th_old} / {th_new}")
+
+    try:
+        active_snaps = supabase.table("league_snapshots").select("id", count="exact").eq("is_active", True).execute().count or 0
+        print(f"\n  Active league_snapshots: {active_snaps}  (should be 0 until regenerated for new season)")
+    except Exception:
+        pass
 
     if untagged > 0:
         print(f"\n  ⚠  WARNING: {untagged} matches still have no season_id — run STEP 2 again.")
@@ -357,8 +451,10 @@ def main():
     print("    1. Extract full DB to local SQLite archive")
     print("    2. Tag untagged matches with old season ID")
     print("    3. Validate & fill history tables for old season")
-    print("    4. Create new season record + activate it")
-    print("    5. Verify database state")
+    print("    4. Record season champion (winner_id)")
+    print("    5. Deactivate old league snapshots")
+    print("    6. Create new season record + activate it")
+    print("    7. Verify database state")
     print("\n  Each step will ask for confirmation before making changes.")
 
     if not confirm("Ready to begin? (Make sure you've backed up your DB first)"):
@@ -372,6 +468,8 @@ def main():
     step_extract_archive(sb)
     step_tag_old_matches(sb)
     step_archive_history(sb)
+    step_record_champion(sb)
+    step_deactivate_snapshots(sb)
     step_create_new_season(sb)
     step_verify(sb)
 
@@ -384,7 +482,6 @@ def main():
     print(f"    • Register new teams for {NEW_SEASON}")
     print(f"    • Register players / update rosters")
     print(f"    • Set the match schedule")
-    print(f"    • Update player ranks from Tracker.gg (optional: fix_ranks.py)")
     print("=" * 60)
 
 
