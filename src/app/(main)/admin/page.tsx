@@ -835,7 +835,7 @@ function PlayoffBracketEditor({
         const id = setInterval(async () => {
             try {
                 const { computeBracketAdvancements, applyBracketAdvancements } = await import('@/lib/data');
-                const acts = await computeBracketAdvancements();
+                const acts = await computeBracketAdvancements(selectedSeason);
                 if (acts.length > 0) {
                     await applyBracketAdvancements(acts);
                     onUpdate();
@@ -843,7 +843,7 @@ function PlayoffBracketEditor({
             } catch { }
         }, 8000);
         return () => clearInterval(id);
-    }, [autoAdvance, matches.length]);
+    }, [autoAdvance, matches.length, selectedSeason]);
 
     const rounds = [
         { id: 1, name: "Round of 24", slots: 8 },

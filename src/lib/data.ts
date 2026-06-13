@@ -2387,11 +2387,13 @@ export async function getPlayoffMatches(seasonId?: string): Promise<PlayoffMatch
 
 export async function generateNextPlayoffRound(currentRound: number): Promise<boolean> {
     try {
+        const activeSeason = await getDefaultSeason();
         const { data: matches } = await supabase
             .from('matches')
             .select('*')
             .eq('match_type', 'playoff')
-            .eq('playoff_round', currentRound);
+            .eq('playoff_round', currentRound)
+            .eq('season_id', activeSeason);
         if (!matches || matches.length === 0) return true;
         // Pair winners by bracket_pos
         const winners = matches
@@ -2402,7 +2404,8 @@ export async function generateNextPlayoffRound(currentRound: number): Promise<bo
             .from('matches')
             .select('*')
             .eq('match_type', 'playoff')
-            .eq('playoff_round', nextRound);
+            .eq('playoff_round', nextRound)
+            .eq('season_id', activeSeason);
         const nextMap = new Map((nextMatches || []).map((m: any) => [m.bracket_pos, m]));
         // Map each winner from current round position directly into next round slot with same bracket_pos.
         for (let i = 0; i < winners.length; i++) {
@@ -2420,7 +2423,7 @@ export async function generateNextPlayoffRound(currentRound: number): Promise<bo
                 }
                 await updateMatch(existing.id, payload);
             } else {
-                await supabase.from('matches').insert({
+                await createMatch({
                     week: w.week || 0,
                     group_name: 'Playoffs',
                     team1_id: null,
@@ -2431,8 +2434,9 @@ export async function generateNextPlayoffRound(currentRound: number): Promise<bo
                     match_type: 'playoff',
                     playoff_round: nextRound,
                     bracket_pos: targetPos,
-                    bracket_label: `R${nextRound} #${targetPos}`
-                } as any);
+                    bracket_label: `R${nextRound} #${targetPos}`,
+                    season_id: activeSeason
+                });
             }
         }
         return true;
@@ -2483,25 +2487,26 @@ export async function updatePendingRequestStatus(type: 'match' | 'player', id: n
 /**
  * Create a new match
  */
-export async function createMatch(match: Omit<MatchEntry, 'id' | 'team1' | 'team2'> & { team1_id: number, team2_id: number }): Promise<number | null> {
+export async function createMatch(match: any): Promise<number | null> {
     try {
+        const payload = {
+            week: match.week,
+            group_name: match.group_name,
+            team1_id: match.team1_id ?? null,
+            team2_id: match.team2_id ?? null,
+            status: match.status,
+            format: match.format,
+            maps_played: match.maps_played,
+            match_type: match.match_type || (match.group_name === 'Playoffs' ? 'playoff' : 'regular'),
+            playoff_round: match.playoff_round,
+            bracket_pos: match.bracket_pos,
+            bracket_label: match.bracket_label,
+            season_id: match.season_id
+        };
         const res = await fetch('/api/admin/matches/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                week: match.week,
-                group_name: match.group_name,
-                team1_id: match.team1_id,
-                team2_id: match.team2_id,
-                status: match.status,
-                format: match.format,
-                maps_played: match.maps_played,
-                match_type: match.match_type || (match.group_name === 'Playoffs' ? 'playoff' : 'regular'),
-                playoff_round: match.playoff_round,
-                bracket_pos: match.bracket_pos,
-                bracket_label: match.bracket_label,
-                season_id: match.season_id // Pass through season_id
-            })
+            body: JSON.stringify(payload)
         } as any);
         if (!res.ok) throw new Error(await res.text());
         const j = await res.json();
@@ -2551,6 +2556,7 @@ export async function updateMatch(id: number, match: MatchUpdate): Promise<boole
         return false;
     }
 }
+
 
 /**
  * Bulk create matches (for the Bulk Add parser)
@@ -2845,7 +2851,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                 }
             } else {
                 // Create R2 match if it doesn't exist (winner waits for BYE seed)
-                await supabase.from('matches').insert({
+                await createMatch({
                     week: PLAYOFF_ROUND_WEEKS[2] || 8,
                     group_name: 'Playoffs',
                     team1_id: null,
@@ -2858,7 +2864,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                     bracket_pos: pos,
                     bracket_label: `R2 #${pos}`,
                     season_id: m.season_id // Explicitly preserve season
-                } as any);
+                });
             }
         } else {
             // ── R2+ → next round: sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.)
@@ -2894,7 +2900,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                     if (!nm.team2_id) upd.team2_id = upperPosWinner;
                     if (upd.team1_id || upd.team2_id) await updateMatch(nm.id, upd);
                 } else {
-                    await supabase.from('matches').insert({
+                    await createMatch({
                         week: PLAYOFF_ROUND_WEEKS[nextRound] || (nextRound + 6),
                         group_name: 'Playoffs',
                         team1_id: lowerPosWinner,
@@ -2907,7 +2913,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                         bracket_pos: targetPos,
                         bracket_label: `R${nextRound} #${targetPos}`,
                         season_id: m.season_id // Explicitly preserve season
-                    } as any);
+                    });
                 }
             }
             // else: sibling not yet completed, nothing to do — wait for the other match
@@ -2926,7 +2932,9 @@ export type BracketAction = {
     team2_id?: number | null;
     title: string;
     reason: string;
+    season_id?: string;
 };
+
 
 export async function computeBracketAdvancements(seasonId?: string): Promise<BracketAction[]> {
     const actions: BracketAction[] = [];
@@ -2984,7 +2992,8 @@ export async function computeBracketAdvancements(seasonId?: string): Promise<Bra
                         team1_id: t1 ? t1 : winId,
                         team2_id: t1 ? winId : t2,
                         title: `R2 #${pos}: ${teamMap.get(t1) || 'TBD'} vs ${teamMap.get(t2) || 'TBD'}`,
-                        reason: `Fill BYE slot with play-in winner ${winnerName}`
+                        reason: `Fill BYE slot with play-in winner ${winnerName}`,
+                        season_id: activeSeason
                     });
                 }
             }
@@ -3026,7 +3035,8 @@ export async function computeBracketAdvancements(seasonId?: string): Promise<Bra
                                 team1_id: nm.team1_id || w1,
                                 team2_id: nm.team2_id || w2,
                                 title: `R${round + 1} #${targetPos}: ${t1Name} vs ${t2Name}`,
-                                reason: `Pair sibling winners ${t1Name} vs ${t2Name}`
+                                reason: `Pair sibling winners ${t1Name} vs ${t2Name}`,
+                                season_id: activeSeason
                             });
                         }
                     } else {
@@ -3037,7 +3047,8 @@ export async function computeBracketAdvancements(seasonId?: string): Promise<Bra
                             team1_id: w1,
                             team2_id: w2,
                             title: `R${round + 1} #${targetPos}: ${t1Name} vs ${t2Name}`,
-                            reason: `Create match for sibling winners`
+                            reason: `Create match for sibling winners`,
+                            season_id: activeSeason
                         });
                     }
                 }
@@ -3058,7 +3069,15 @@ export async function applyBracketAdvancements(actions: BracketAction[]): Promis
                 if (act.team2_id !== undefined) payload.team2_id = act.team2_id;
                 await updateMatch(act.match_id, payload);
             } else if (act.kind === 'create') {
-                const { data: existing } = await supabase.from('matches').select('id').eq('match_type', 'playoff').eq('playoff_round', act.target_round).eq('bracket_pos', act.bracket_pos).limit(1);
+                let query = supabase.from('matches')
+                    .select('id')
+                    .eq('match_type', 'playoff')
+                    .eq('playoff_round', act.target_round)
+                    .eq('bracket_pos', act.bracket_pos);
+                if (act.season_id) {
+                    query = query.eq('season_id', act.season_id);
+                }
+                const { data: existing } = await query.limit(1);
                 
                 if (existing && existing.length > 0) {
                     const payload: any = {};
@@ -3066,7 +3085,7 @@ export async function applyBracketAdvancements(actions: BracketAction[]): Promis
                     if (act.team2_id !== undefined) payload.team2_id = act.team2_id;
                     await updateMatch(existing[0].id, payload);
                 } else {
-                    await supabase.from('matches').insert({
+                    await createMatch({
                         week: PLAYOFF_ROUND_WEEKS[act.target_round] || (act.target_round + 6),
                         group_name: 'Playoffs',
                         team1_id: act.team1_id ?? null,
@@ -3077,8 +3096,9 @@ export async function applyBracketAdvancements(actions: BracketAction[]): Promis
                         match_type: 'playoff',
                         playoff_round: act.target_round,
                         bracket_pos: act.bracket_pos,
-                        bracket_label: `R${act.target_round} #${act.bracket_pos}`
-                    } as any);
+                        bracket_label: `R${act.target_round} #${act.bracket_pos}`,
+                        season_id: act.season_id
+                    });
                 }
             }
         }
