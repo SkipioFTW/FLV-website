@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       const { model, scalers } = await loadModel(false);
       modelRaw = model;
 
-      if (model.type === 'logistic_v5') {
+      if (model.type !== 'b_ratings') {
         const dfv = await buildDynamicFeatures(t1, t2);
         prob = logisticPredict(dfv.values, model, scalers, t1, t2);
         features = dfv.order.reduce((acc: Record<string, number>, key, i) => {

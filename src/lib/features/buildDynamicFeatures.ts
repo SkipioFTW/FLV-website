@@ -39,7 +39,7 @@ export async function buildDynamicFeatures(team1Id: number, team2Id: number): Pr
 
     // 2. Fetch pre-calculated historical stats (cached in storage)
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    let playerStats: Record<string, { acs: number; kd: number; exp: number }> = {};
+    let playerStats: Record<string, { acs: number; kd: number; exp: number; adr: number; kast: number; hs_pct: number; entry: number; clutch_rate: number }> = {};
     let teamStats: Record<string, { wr: number; form: number; rd: number }> = {};
 
     try {
@@ -61,28 +61,36 @@ export async function buildDynamicFeatures(team1Id: number, team2Id: number): Pr
 
     const rf1 = (() => {
         const acsList: number[] = [], kdList: number[] = [], rankList: number[] = [], expList: number[] = [];
+        const adrList: number[] = [], kastList: number[] = [], hsList: number[] = [], entryList: number[] = [], clutchList: number[] = [];
         t1Players.forEach(p => {
             const rv = getRankValue(p.rank);
             rankList.push(rv);
             const h = playerStats[p.id];
-            if (h) { acsList.push(h.acs); kdList.push(h.kd); expList.push(h.exp); }
-            else { acsList.push(140 + rv * 6); kdList.push(0.4 + rv * 0.04); expList.push(0); }
+            if (h) { acsList.push(h.acs); kdList.push(h.kd); expList.push(h.exp); adrList.push(h.adr); kastList.push(h.kast); hsList.push(h.hs_pct); entryList.push(h.entry); clutchList.push(h.clutch_rate); }
+            else { acsList.push(140 + rv * 6); kdList.push(0.4 + rv * 0.04); expList.push(0); adrList.push(90 + rv * 4); kastList.push(55 + rv * 1); hsList.push(15 + rv * 1); entryList.push(0); clutchList.push(0); }
         });
-        if (acsList.length === 0) return { acs: 150, kd: 1.0, rank: 10, exp: 0 };
-        return { acs: acsList.reduce((a,b)=>a+b,0)/acsList.length, kd: kdList.reduce((a,b)=>a+b,0)/kdList.length, rank: rankList.reduce((a,b)=>a+b,0)/rankList.length, exp: expList.reduce((a,b)=>a+b,0) };
+        if (acsList.length === 0) return { acs: 150, kd: 1.0, rank: 10, exp: 0, adr: 90, kast: 55, hs: 15, entry: 0, clutch_rate: 0 };
+        return {
+            acs: acsList.reduce((a,b)=>a+b,0)/acsList.length, kd: kdList.reduce((a,b)=>a+b,0)/kdList.length, rank: rankList.reduce((a,b)=>a+b,0)/rankList.length, exp: expList.reduce((a,b)=>a+b,0),
+            adr: adrList.reduce((a,b)=>a+b,0)/adrList.length, kast: kastList.reduce((a,b)=>a+b,0)/kastList.length, hs: hsList.reduce((a,b)=>a+b,0)/hsList.length, entry: entryList.reduce((a,b)=>a+b,0)/entryList.length, clutch_rate: clutchList.reduce((a,b)=>a+b,0)/clutchList.length
+        };
     })();
 
     const rf2 = (() => {
         const acsList: number[] = [], kdList: number[] = [], rankList: number[] = [], expList: number[] = [];
+        const adrList: number[] = [], kastList: number[] = [], hsList: number[] = [], entryList: number[] = [], clutchList: number[] = [];
         t2Players.forEach(p => {
             const rv = getRankValue(p.rank);
             rankList.push(rv);
             const h = playerStats[p.id];
-            if (h) { acsList.push(h.acs); kdList.push(h.kd); expList.push(h.exp); }
-            else { acsList.push(140 + rv * 6); kdList.push(0.4 + rv * 0.04); expList.push(0); }
+            if (h) { acsList.push(h.acs); kdList.push(h.kd); expList.push(h.exp); adrList.push(h.adr); kastList.push(h.kast); hsList.push(h.hs_pct); entryList.push(h.entry); clutchList.push(h.clutch_rate); }
+            else { acsList.push(140 + rv * 6); kdList.push(0.4 + rv * 0.04); expList.push(0); adrList.push(90 + rv * 4); kastList.push(55 + rv * 1); hsList.push(15 + rv * 1); entryList.push(0); clutchList.push(0); }
         });
-        if (acsList.length === 0) return { acs: 150, kd: 1.0, rank: 10, exp: 0 };
-        return { acs: acsList.reduce((a,b)=>a+b,0)/acsList.length, kd: kdList.reduce((a,b)=>a+b,0)/kdList.length, rank: rankList.reduce((a,b)=>a+b,0)/rankList.length, exp: expList.reduce((a,b)=>a+b,0) };
+        if (acsList.length === 0) return { acs: 150, kd: 1.0, rank: 10, exp: 0, adr: 90, kast: 55, hs: 15, entry: 0, clutch_rate: 0 };
+        return {
+            acs: acsList.reduce((a,b)=>a+b,0)/acsList.length, kd: kdList.reduce((a,b)=>a+b,0)/kdList.length, rank: rankList.reduce((a,b)=>a+b,0)/rankList.length, exp: expList.reduce((a,b)=>a+b,0),
+            adr: adrList.reduce((a,b)=>a+b,0)/adrList.length, kast: kastList.reduce((a,b)=>a+b,0)/kastList.length, hs: hsList.reduce((a,b)=>a+b,0)/hsList.length, entry: entryList.reduce((a,b)=>a+b,0)/entryList.length, clutch_rate: clutchList.reduce((a,b)=>a+b,0)/clutchList.length
+        };
     })();
 
     const tm1 = getTeamFeatures(team1Id);
@@ -95,10 +103,15 @@ export async function buildDynamicFeatures(team1Id: number, team2Id: number): Pr
         diff_exp: rf1.exp - rf2.exp,
         diff_wr: tm1.wr - tm2.wr,
         diff_form: tm1.form - tm2.form,
-        diff_rd: tm1.rd - tm2.rd
+        diff_rd: tm1.rd - tm2.rd,
+        diff_adr: rf1.adr - rf2.adr,
+        diff_kast: rf1.kast - rf2.kast,
+        diff_hs: rf1.hs - rf2.hs,
+        diff_entry: rf1.entry - rf2.entry,
+        diff_clutch: rf1.clutch_rate - rf2.clutch_rate
     };
 
-    const order = ["diff_acs", "diff_kd", "diff_rank", "diff_exp", "diff_wr", "diff_form", "diff_rd"];
+    const order = ["diff_acs", "diff_kd", "diff_rank", "diff_exp", "diff_wr", "diff_form", "diff_rd", "diff_adr", "diff_kast", "diff_hs", "diff_entry", "diff_clutch"];
     const values = order.map(k => features[k]);
 
     return { order, values };

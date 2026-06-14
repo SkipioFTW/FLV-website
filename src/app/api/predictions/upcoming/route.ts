@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { buildFeatures } from '@/lib/features/buildFeatures';
+import { buildDynamicFeatures } from '@/lib/features/buildDynamicFeatures';
 import { loadModel } from '@/lib/model/registry';
 import { logisticPredict } from '@/lib/model/infer';
 
@@ -48,7 +49,9 @@ export async function GET(req: NextRequest) {
       try {
         const t1_id = Number(m.team1_id);
         const t2_id = Number(m.team2_id);
-        const fv = await buildFeatures(t1_id, t2_id);
+        const fv = (model && model.type !== 'b_ratings')
+          ? await buildDynamicFeatures(t1_id, t2_id)
+          : await buildFeatures(t1_id, t2_id);
         let prob = 0.5;
         if (model && scalers) {
           prob = logisticPredict(fv.values, model, scalers, t1_id, t2_id);

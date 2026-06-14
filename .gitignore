@@ -48,3 +48,9 @@ database_schema.txt
 get_match.py
 
 tools/season-transition/.env.example
+.mcp.json
+
+# python
+__pycache__/
+*.pyc
+training/output/
