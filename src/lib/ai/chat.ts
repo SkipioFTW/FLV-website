@@ -33,9 +33,9 @@ player_history (player_id, season_id, rank)
 player_team_history (player_id, team_id, season_id, is_current)
 
 KEY NOTES:
-- STANDINGS: Query 'matches' where status = 'completed' AND match_type = 'regular'.
-- POINTS MATH: Winner gets 15 pts. Loser gets 0 pts. 
-- TIE-BREAKERS: 1. Points, 2. Map Differential (Maps Won - Maps Lost), 3. Round Differential (PD).
+- STANDINGS: Use the STANDINGS TEMPLATE from your instructions — do not derive it from scratch.
+- POINTS MATH: Winner gets 15 pts. Loser gets min(total rounds won across the match's maps, 12) pts (a "moral victory" cap, NOT 0).
+- TIE-BREAKERS: 1. Points DESC, 2. PD (Points - Points Against) DESC.
 - PLAYOFF ROUNDS: 1: Play-ins, 2: R16, 3: quarters, 4: semis, 5: GRAND FINAL.
 - If asking for "The Final", filter by playoff_round = 5.
 - ALWAYS filter by 'season_id' = '${seasonId}'.
@@ -60,10 +60,49 @@ STRICT OPERATING RULES:
 4. **If Query Fails/Empty**: If you find nothing, say "No data found for [Entity] in ${seasonId}." Never guess.
 
 LEAGUE INTELLIGENCE:
-- **Standings Logic**: Points = Wins * 15. Losers get 0 pts.
-- **Tie-breakers**: 1. Points, 2. Map Differential (Maps Won - Lost), 3. Round Differential (PD).
-- **Match granularity**: 'matches.score_t1' are MAPS won. 'match_maps.team1_rounds' are ROUNDS won.
+- **Standings Logic**: The match winner earns 15 pts. The loser earns min(total rounds won across all the match's maps, 12) pts — a "moral victory" cap, NOT 0.
+- **PD (Point Differential)**: PD = total Points earned - total Points conceded across a team's matches.
+- **Tie-breakers**: 1. Points DESC, 2. PD DESC.
+- **Match granularity**: 'matches.score_t1' are MAPS won. 'match_maps.team1_rounds'/'team2_rounds' are ROUNDS won per map — sum across all of a match's maps for total rounds.
 - **Captaincy**: Look for 'captain_id' in 'team_history' joining 'players'.
+- **STANDINGS TEMPLATE**: For "standings"/"how is S## doing"/league-overview questions, use this EXACT query as your SQL (the season filter is already filled in for ${seasonId}). Add \`AND t.name ILIKE '%TeamName%'\` to the final WHERE for a single team, or \`LIMIT n\` after ORDER BY for a top-N. Do NOT try to derive standings from scratch — it is error-prone:
+
+\`\`\`sql
+WITH match_rounds AS (
+    SELECT match_id, SUM(team1_rounds) as total_r1, SUM(team2_rounds) as total_r2
+    FROM match_maps
+    GROUP BY match_id
+),
+team_matches AS (
+    SELECT m.team1_id as team_id,
+        CASE WHEN m.winner_id = m.team1_id THEN 1 ELSE 0 END as win,
+        CASE WHEN m.winner_id = m.team1_id THEN 15 ELSE LEAST(COALESCE(mr.total_r1, 0), 12) END as earned_pts,
+        CASE WHEN m.winner_id = m.team2_id THEN 15 ELSE LEAST(COALESCE(mr.total_r2, 0), 12) END as against_pts
+    FROM matches m
+    LEFT JOIN match_rounds mr ON m.id = mr.match_id
+    WHERE m.status = 'completed' AND m.match_type = 'regular' AND m.season_id = '${seasonId}'
+    UNION ALL
+    SELECT m.team2_id,
+        CASE WHEN m.winner_id = m.team2_id THEN 1 ELSE 0 END,
+        CASE WHEN m.winner_id = m.team2_id THEN 15 ELSE LEAST(COALESCE(mr.total_r2, 0), 12) END,
+        CASE WHEN m.winner_id = m.team1_id THEN 15 ELSE LEAST(COALESCE(mr.total_r1, 0), 12) END
+    FROM matches m
+    LEFT JOIN match_rounds mr ON m.id = mr.match_id
+    WHERE m.status = 'completed' AND m.match_type = 'regular' AND m.season_id = '${seasonId}'
+)
+SELECT t.name, t.tag,
+    COUNT(tm.team_id) as played,
+    COALESCE(SUM(tm.win), 0) as wins,
+    COUNT(tm.team_id) - COALESCE(SUM(tm.win), 0) as losses,
+    COALESCE(SUM(tm.earned_pts), 0) as points,
+    COALESCE(SUM(tm.earned_pts), 0) - COALESCE(SUM(tm.against_pts), 0) as pd
+FROM teams t
+LEFT JOIN team_matches tm ON t.id = tm.team_id
+WHERE t.name NOT IN ('FAT1', 'FAT2')
+GROUP BY t.id, t.name, t.tag
+HAVING COUNT(tm.team_id) > 0
+ORDER BY points DESC, pd DESC
+\`\`\`
 
 YOUR WORKFLOW (multi-step is allowed for complex questions):
 1. **REASONING**: Briefly state what you need to find.
