@@ -946,8 +946,9 @@ class AnalyticsCog(commands.Cog):
     @app_commands.command(name="elo", description="Show a player's Skipio ELO rating")
     @app_commands.describe(name="Player name or mention", season="Season ID (e.g. S24 or all)")
     @app_commands.autocomplete(name=player_autocomplete, season=season_autocomplete)
-    async def elo(self, interaction: discord.Interaction, name: str, season: str = 'S24'):
+    async def elo(self, interaction: discord.Interaction, name: str, season: str = None):
         await interaction.response.defer()
+        if season is None: season = await run_in_executor(get_default_season)
         try:
             with get_conn() as conn:
                 if not conn: return await interaction.followup.send("❌ DB Error.")
@@ -1018,8 +1019,9 @@ class AnalyticsCog(commands.Cog):
     @app_commands.command(name="skipio-leaderboard", description="Show top players by Skipio ELO rating")
     @app_commands.describe(rank="Filter by rank tier", season="Season ID", min_games="Min maps played")
     @app_commands.autocomplete(rank=rank_autocomplete, season=season_autocomplete)
-    async def skipio_leaderboard(self, interaction: discord.Interaction, rank: str = None, season: str = 'S24', min_games: int = 3):
+    async def skipio_leaderboard(self, interaction: discord.Interaction, rank: str = None, season: str = None, min_games: int = 3):
         await interaction.response.defer()
+        if season is None: season = await run_in_executor(get_default_season)
         try:
             with get_conn() as conn:
                 if not conn: return await interaction.followup.send("❌ DB Error.")

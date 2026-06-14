@@ -1,21 +1,31 @@
 import { supabase, type Team, type Match, type MatchMap } from './supabase';
 
 /**
- * Get the current active season ID (e.g., 'S24')
+ * Get the current active season ID (the season with is_active = true,
+ * falling back to the most recent season by ID if none is flagged active).
  */
 export async function getDefaultSeason(): Promise<string> {
     try {
-        const { data, error } = await supabase
+        const { data: active } = await supabase
+            .from('seasons')
+            .select('id')
+            .eq('is_active', true)
+            .order('id', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (active) return active.id;
+
+        const { data: latest } = await supabase
             .from('seasons')
             .select('id')
             .order('id', { ascending: false })
             .limit(1)
             .single();
 
-        if (error || !data) return 'S24';
-        return data.id;
+        return latest?.id || '';
     } catch {
-        return 'S24';
+        return '';
     }
 }
 
@@ -34,11 +44,7 @@ export async function getSeasons(): Promise<{ id: string, name: string, is_activ
         return [...seasons, { id: 'all', name: 'All Time', is_active: false }];
     } catch (error) {
         console.error('Error fetching seasons:', error);
-        return [
-            { id: 'S24', name: 'Season 24', is_active: true },
-            { id: 'S23', name: 'Season 23', is_active: false },
-            { id: 'all', name: 'All Time', is_active: false }
-        ];
+        return [{ id: 'all', name: 'All Time', is_active: false }];
     }
 }
 

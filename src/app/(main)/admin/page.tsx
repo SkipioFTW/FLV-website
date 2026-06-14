@@ -29,7 +29,7 @@ export default function AdminPage() {
     const [playoffMatches, setPlayoffMatches] = useState<PlayoffMatch[]>([]);
     const [teams, setTeams] = useState<{ id: number, name: string, tag: string, group_name: string }[]>([]);
     const [stats, setStats] = useState<GlobalStats>({ activeTeams: 0, matchesPlayed: 0, livePlayers: 0, totalPoints: 0 });
-    const [selectedSeason, setSelectedSeason] = useState<string>('S24');
+    const [selectedSeason, setSelectedSeason] = useState<string>('');
     const [availableSeasons, setAvailableSeasons] = useState<{ id: string, name: string, is_active: boolean }[]>([]);
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);

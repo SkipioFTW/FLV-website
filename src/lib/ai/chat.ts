@@ -104,7 +104,7 @@ export async function chatWithAI(
     userMessage: string,
     _snapshot: any,         // kept for backward-compat with route.ts, not used
     conversationHistory: ChatMessage[] = [],
-    seasonId: string = 'S23'
+    seasonId: string
 ): Promise<ChatResponse> {
     const apiKey = process.env.AI_API_KEY;
     const provider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();

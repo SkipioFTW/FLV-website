@@ -22,9 +22,9 @@ function renderMarkdown(text: string) {
 
 function AIAnalystContent() {
     const searchParams = useSearchParams();
-    const [currentSeasonId, setCurrentSeasonId] = useState<string>("S23");
+    const [currentSeasonId, setCurrentSeasonId] = useState<string>("");
     const [isOpen, setIsOpen] = useState(false);
-    
+
     useEffect(() => {
         const loadDefault = async () => {
             const seasonFromUrl = searchParams.get('season');
@@ -39,8 +39,16 @@ function AIAnalystContent() {
     }, [searchParams]);
 
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', content: `Hey! I'm the **FLV AI Analyst**. Ask me anything about ${currentSeasonId} — standings, player stats, map records, or who's popping off this week.` }
+        { role: 'assistant', content: `Hey! I'm the **FLV AI Analyst**. Ask me anything — standings, player stats, map records, or who's popping off this week.` }
     ]);
+
+    // Once the active season loads, mention it in the welcome message (if the user hasn't started chatting yet)
+    useEffect(() => {
+        if (!currentSeasonId) return;
+        setMessages(prev => prev.length === 1 && prev[0].role === 'assistant'
+            ? [{ role: 'assistant', content: `Hey! I'm the **FLV AI Analyst**. Ask me anything about ${currentSeasonId} — standings, player stats, map records, or who's popping off this week.` }]
+            : prev);
+    }, [currentSeasonId]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [cooldown, setCooldown] = useState(0); // seconds remaining

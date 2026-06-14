@@ -97,20 +97,25 @@ def get_conn():
 def get_default_season():
     try:
         with get_conn() as conn:
-            if not conn: return "S24"
+            if not conn: return None
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM seasons WHERE is_active = true ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
-            return row[0] if row else "S24"
+            if row:
+                return row[0]
+            # No season flagged active - fall back to the most recent one
+            cursor.execute("SELECT id FROM seasons ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            return row[0] if row else None
     except:
-        return "S24"
+        return None
 
 def get_seasons():
     try:
         with get_conn() as conn:
-            if not conn: return [("S24", "Season 24"), ("S23", "Season 23")]
+            if not conn: return []
             cursor = conn.cursor()
             cursor.execute("SELECT id, name FROM seasons ORDER BY id DESC")
             return cursor.fetchall()
     except:
-        return [("S24", "Season 24"), ("S23", "Season 23")]
+        return []

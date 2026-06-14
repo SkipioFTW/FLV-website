@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chatWithAI } from '@/lib/ai/chat';
+import { getDefaultSeason } from '@/lib/data';
 
 /**
  * POST /api/chat (v7.0 — SQL Agent)
@@ -35,7 +36,8 @@ export async function POST(req: NextRequest) {
         console.log(`[AI Chat] Provider: ${process.env.AI_PROVIDER || 'gemini'} | History: ${validHistory.length} msgs`);
 
         // Call the AI Agent (no snapshot needed — it queries the DB directly)
-        const result = await chatWithAI(message.trim(), null, validHistory, seasonId);
+        const resolvedSeasonId = seasonId || await getDefaultSeason();
+        const result = await chatWithAI(message.trim(), null, validHistory, resolvedSeasonId);
 
         if (result.error) {
             if (result.reply) {

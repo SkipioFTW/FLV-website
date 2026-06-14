@@ -85,7 +85,7 @@ class AICog(commands.Cog):
                             history_payload.append({"role": role, "content": content})
 
                     # Try to parse season from the original thread message footer
-                    season = "S24"
+                    season = await run_in_executor(get_default_season)
                     try:
                         first_msg = await message.channel.parent.fetch_message(message.channel.id)
                         if first_msg.embeds and first_msg.embeds[0].footer and first_msg.embeds[0].footer.text:
