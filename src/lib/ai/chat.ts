@@ -135,8 +135,17 @@ export async function chatWithAI(
             const sql = extractSQL(response);
 
             if (!sql) {
-                // Conversational reply or final answer — nothing more to do
-                return { reply: response };
+                const looksFinal = /\*\*\s*THE HEADLINE\s*\*\*/i.test(response);
+                if (looksFinal || round === MAX_SQL_ROUNDS - 1) {
+                    // Conversational reply or final answer — nothing more to do
+                    return { reply: response };
+                }
+                // Model stalled mid-thought without SQL or a final answer — nudge it to finish.
+                console.log(`[AI Chat] Round ${round + 1} produced neither SQL nor a final answer. Nudging...`);
+                history.push({ role: 'user', content: nextMessage });
+                history.push({ role: 'assistant', content: response });
+                nextMessage = `You didn't include a SQL block or a FINAL ANSWER. Either output ONE \`\`\`sql block now, or give your FINAL ANSWER following the RESPONSE STRUCTURE (starting with **THE HEADLINE**).`;
+                continue;
             }
 
             history.push({ role: 'user', content: nextMessage });
@@ -229,7 +238,6 @@ async function callGemini(
     systemPrompt: string
 ): Promise<string> {
     const useModel = process.env.AI_MODEL || model;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${useModel}:generateContent?key=${apiKey}`;
 
     const contents: any[] = [];
     history.forEach(msg => {
@@ -237,23 +245,38 @@ async function callGemini(
     });
     contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
-    const generationConfig: Record<string, unknown> = { maxOutputTokens: 2048, temperature: 0.6 };
-    // 2.5 models default to "thinking", which silently eats into maxOutputTokens
-    // and can truncate the visible reply before it produces any text. Disable it
-    // (2.5 Flash/Flash-Lite support a budget of 0; 2.5 Pro does not).
-    if (useModel.includes('2.5') && !useModel.includes('pro')) {
-        generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    }
+    const fetchModel = (modelName: string) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const generationConfig: Record<string, unknown> = { maxOutputTokens: 2048, temperature: 0.6 };
+        // 2.5 models default to "thinking", which silently eats into maxOutputTokens
+        // and can truncate the visible reply before it produces any text. Disable it
+        // (2.5 Flash/Flash-Lite support a budget of 0; 2.5 Pro does not).
+        if (modelName.includes('2.5') && !modelName.includes('pro')) {
+            generationConfig.thinkingConfig = { thinkingBudget: 0 };
+        }
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents,
+                generationConfig,
+            }),
+        });
+    };
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents,
-            generationConfig,
-        }),
-    });
+    let res = await fetchModel(useModel);
+
+    // Newer free-tier models occasionally return 503 "overloaded" under high demand.
+    // Retry once after a short delay, then fall back to 2.0-flash (less contended).
+    if (!res.ok && (res.status === 503 || res.status === 500)) {
+        await new Promise(r => setTimeout(r, 1000));
+        res = await fetchModel(useModel);
+    }
+    if (!res.ok && (res.status === 503 || res.status === 500) && useModel !== 'gemini-2.0-flash') {
+        console.log(`[AI Chat] ${useModel} overloaded (${res.status}), falling back to gemini-2.0-flash`);
+        res = await fetchModel('gemini-2.0-flash');
+    }
 
     if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${await res.text()}`);
     const data = await res.json();
