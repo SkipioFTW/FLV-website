@@ -237,13 +237,21 @@ async function callGemini(
     });
     contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
+    const generationConfig: Record<string, unknown> = { maxOutputTokens: 2048, temperature: 0.6 };
+    // 2.5 models default to "thinking", which silently eats into maxOutputTokens
+    // and can truncate the visible reply before it produces any text. Disable it
+    // (2.5 Flash/Flash-Lite support a budget of 0; 2.5 Pro does not).
+    if (useModel.includes('2.5') && !useModel.includes('pro')) {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
             contents,
-            generationConfig: { maxOutputTokens: 2048, temperature: 0.6 },
+            generationConfig,
         }),
     });
 
