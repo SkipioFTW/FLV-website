@@ -3,7 +3,7 @@ import { chatWithAI } from '@/lib/ai/chat';
 import { getDefaultSeason } from '@/lib/data';
 
 /**
- * POST /api/chat (v7.0 — SQL Agent)
+ * POST /api/chat (v9.0 — SQL Agent)
  *
  * The snapshot is no longer needed. The AI now queries
  * the database directly via the secure exec_sql function.
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         const validHistory = Array.isArray(history)
             ? history
                 .filter((h: any) => h.role && h.content && typeof h.content === 'string')
-                .slice(-6) // Keep last 6 messages (3 turns) to limit context
+                .slice(-10) // Keep last 10 messages (5 turns) to limit context
                 .map((h: any) => ({ role: h.role as 'user' | 'assistant', content: h.content.slice(0, 1000) }))
             : [];
 

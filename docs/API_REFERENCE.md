@@ -26,10 +26,10 @@ AI League Analyst — natural language Q&A about the tournament.
 | **Purpose** | Query the AI analyst about teams, players, and matchups |
 | **Request** | `{ message: string, history?: ChatMessage[], seasonId?: string }` |
 | **Response** | `{ reply: string }` |
-| **Rate Limit** | Message max 500 chars, history limited to last 6 messages |
-| **AI Backend** | Google Gemini (configurable via `AI_PROVIDER` env var) |
+| **Rate Limit** | Message max 500 chars, history limited to last 10 messages |
+| **AI Backend** | Google Gemini 2.5 Flash by default (configurable via `AI_PROVIDER`/`AI_MODEL`/`AI_API_KEY`; also supports `groq`, `mistral`, `deepseek`, `openrouter`, or any OpenAI-compatible endpoint via `AI_BASE_URL`) |
 
-The AI agent can query the database directly via a secure `exec_sql` RPC function.
+The AI agent can query the database directly via a secure `exec_sql` RPC function, issuing up to 3 SQL queries per question for multi-step analysis.
 
 ---
 
