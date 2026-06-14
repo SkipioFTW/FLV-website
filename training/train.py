@@ -41,7 +41,7 @@ def history_mean(h, key, last_n=5):
     return float(np.mean(vals)) if vals else None
 
 def upload_json(sb, path, obj):
-    sb.storage.from_("models").upload(path, json.dumps(obj), {"content-type": "application/json", "upsert": "true"})
+    sb.storage.from_("models").upload(path, json.dumps(obj).encode("utf-8"), {"content-type": "application/json", "upsert": "true"})
 
 def main():
     if not SUPABASE_URL or not SUPABASE_KEY:
