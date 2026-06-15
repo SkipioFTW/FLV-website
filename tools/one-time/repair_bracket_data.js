@@ -1,5 +1,3 @@
-const fs = require('fs');
-
 const URL = 'https://tekwoxehaktajyizaacj.supabase.co';
 const ANON_KEY = 'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY';
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
-import { MessageSquare, X, Send, Bot, User, Sparkles, ChevronDown, Timer } from "lucide-react";
+import { MessageSquare, Send, Bot, User, Sparkles, ChevronDown } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { getDefaultSeason } from "@/lib/data";
 

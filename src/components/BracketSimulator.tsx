@@ -48,7 +48,7 @@ export default function BracketSimulator({ initialMatches }: Props) {
         if (saved) {
             try {
                 setSimulatedWinners(JSON.parse(saved));
-            } catch (e) {
+            } catch {
                 console.error('Failed to load saved picks');
             }
         }

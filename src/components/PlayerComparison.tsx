@@ -8,7 +8,6 @@ import {
     RadarChart,
     PolarGrid,
     PolarAngleAxis,
-    PolarRadiusAxis,
     ResponsiveContainer,
 } from 'recharts';
 
@@ -17,7 +16,7 @@ export default function PlayerComparison({ players, seasonId }: { players: { id:
     const [id2, setId2] = useState<number | null>(null);
     const [stats1, setStats1] = useState<PlayerStats | null>(null);
     const [stats2, setStats2] = useState<PlayerStats | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [, setLoading] = useState(false);
     const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
 
     useEffect(() => {

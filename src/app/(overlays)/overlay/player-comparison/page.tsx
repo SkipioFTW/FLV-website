@@ -1,4 +1,4 @@
-import { getPlayerStats, getDefaultSeason, type PlayerStats } from '@/lib/data';
+import { getPlayerStats, getDefaultSeason } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 

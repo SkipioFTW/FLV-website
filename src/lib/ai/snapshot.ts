@@ -81,7 +81,6 @@ export async function generateLeagueSnapshot(seasonId?: string): Promise<LeagueS
     const teamById = new Map(teams.map((t: any) => [t.id, t]));
     const playerById = new Map(players.map((p: any) => [p.id, p]));
     const teamTag = (id: number) => teamById.get(id)?.tag || '??';
-    const teamName = (id: number) => teamById.get(id)?.name || 'Unknown';
     const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
 
     const stats = statsRaw.filter((s: any) => completedIds.has(s.match_id));

@@ -1,5 +1,4 @@
 import Navbar from "@/components/Navbar";
-import Link from 'next/link';
 import { getGlobalStats, getDefaultSeason, getLeaderboard, getStandings } from '@/lib/data';
 import LandingClient from './LandingClient';
 
@@ -45,7 +44,6 @@ export default async function Home(props: {
         <div className="flex flex-col min-h-screen">
             <Navbar />
             <LandingClient
-                seasonId={seasonId}
                 seasonNumber={seasonNumber}
                 stats={stats}
                 topPlayer={topPlayer}

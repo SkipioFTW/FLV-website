@@ -158,7 +158,7 @@ function SummaryContent() {
               </div>
 
               <div className="grid md:grid-cols-2 gap-8">
-                {[details.match.team1, details.match.team2].map((team, idx) => {
+                {[details.match.team1, details.match.team2].map((team) => {
                   const rows = map.stats.filter((s: any) => s.team_id === team.id);
                   return (
                     <div key={team.id} className="glass p-6 border border-white/5 rounded">

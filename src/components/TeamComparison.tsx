@@ -18,7 +18,7 @@ export default function TeamComparison({ teams, seasonId }: { teams: { id: numbe
     const [id2, setId2] = useState<number | null>(null);
     const [stats1, setStats1] = useState<TeamPerformance | null>(null);
     const [stats2, setStats2] = useState<TeamPerformance | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [, setLoading] = useState(false);
     const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
 
     useEffect(() => {

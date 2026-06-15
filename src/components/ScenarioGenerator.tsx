@@ -25,7 +25,7 @@ export default function ScenarioGenerator({ initialStandings, remainingMatches }
         if (saved) {
             try {
                 setPicks(JSON.parse(saved));
-            } catch (e) {
+            } catch {
                 console.error('Failed to load saved picks');
             }
         }

@@ -27,7 +27,7 @@ export default function StandingsView({ groupedStandings }: Props) {
     const groups = Array.from(groupedStandings.entries());
     const [selectedGroup, setSelectedGroup] = useState<string>(groups[0]?.[0] || '');
 
-    const totalMatchesPlayed = groups.reduce((acc, [_, teams]) => {
+    const totalMatchesPlayed = groups.reduce((acc, [, teams]) => {
         return acc + teams.reduce((tAcc, team) => tAcc + team.Played, 0);
     }, 0);
 

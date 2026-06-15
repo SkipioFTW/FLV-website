@@ -1,4 +1,4 @@
-import { supabase, type Team, type Match, type MatchMap } from './supabase';
+import { supabase } from './supabase';
 
 /**
  * Get the current active season ID (the season with is_active = true,
@@ -224,7 +224,7 @@ export function parseTrackerJson(
     team2_id: number,
     roster1Rids?: string[],
     roster2Rids?: string[],
-    mapIndex: number = 0
+    _mapIndex: number = 0
 ): {
     suggestions: Record<string, {
         team_num: 1 | 2;
@@ -425,7 +425,7 @@ export function parseHenrikDevJson(
     team2_id: number,
     roster1Rids?: string[],
     roster2Rids?: string[],
-    mapIndex: number = 0
+    _mapIndex: number = 0
 ) {
     try {
         const suggestions: Record<string, any> = {};
@@ -1892,7 +1892,7 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
 
         const playerStats = Array.from(pStats.entries())
             .filter(([id]) => rosterIds.has(id))
-            .map(([id, data]) => {
+            .map(([, data]) => {
                 const acsAvg = data.acs.length > 0 ? Math.round(data.acs.reduce((a, b) => a + b, 0) / data.acs.length) : 0;
                 const kdVal = data.deaths > 0 ? parseFloat((data.kills / data.deaths).toFixed(2)) : data.kills;
                 const mostPlayed = Array.from(data.agentCounts.entries())
@@ -2045,12 +2045,11 @@ export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'
             matchQuery = matchQuery.eq('match_type', matchType);
         }
 
-        const [teams, players, matches, stats, mapData] = await Promise.all([
+        const [teams, players, matches, stats] = await Promise.all([
             supabase.from('teams').select('id, name').order('name'),
             supabase.from('players').select('id, name, default_team_id'),
             matchQuery,
-            supabase.from('match_stats_map').select('*').eq('is_sub', 1),
-            supabase.from('match_maps').select('*')
+            supabase.from('match_stats_map').select('*').eq('is_sub', 1)
         ]);
 
         if (teams.error) throw teams.error;
@@ -2065,7 +2064,6 @@ export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'
         const teamMatchesWithSubs = new Map<number, Set<number>>();
         const logs: any[] = [];
         const matchMap = new Map((matches.data as any[]).map(m => [m.id, m]));
-        const mapMetadataMap = new Map((mapData.data as any[]).map(m => [`${m.match_id}-${m.map_index || 0}`, m]));
 
         (stats.data || []).forEach((s: any) => {
             const match = matchMap.get(s.match_id);
@@ -3221,7 +3219,7 @@ export async function annotateElimination(standings: StandingsRow[]): Promise<(S
     });
 
     const out: (StandingsRow & { eliminated: boolean, remaining: number })[] = [];
-    for (const [groupName, groupTeams] of grouped.entries()) {
+    for (const [, groupTeams] of grouped.entries()) {
         const sorted = [...groupTeams].sort((a, b) => {
             if (b.Points !== a.Points) return b.Points - a.Points;
             return b.PD - a.PD;
@@ -3287,7 +3285,7 @@ export async function updateSessionActivity(ip: string) {
             { ip_address: ip, last_activity: now },
             { onConflict: 'ip_address' }
         );
-    } catch (e) {
+    } catch {
         // Silently fail if table doesn't exist or other issues
     }
 }
@@ -3541,13 +3539,6 @@ export function getSkipioTier(elo: number): { label: string, color: string } {
   return { label: 'Struggling', color: 'text-red-500' };
 }
 
-const RANK_GROUPS: Record<string, number> = {
-  'Iron': 1, 'Bronze': 1,
-  'Silver': 2, 'Gold': 2,
-  'Platinum': 3, 'Diamond': 3,
-  'Ascendant': 4, 'Immortal': 4, 'Radiant': 4
-};
-
 function getRankGroup(rankStr: string | null): number {
   if (!rankStr) return 2; // Default to mid
   const upper = rankStr.toUpperCase();
@@ -3587,7 +3578,6 @@ export async function getSkipioLeaderboard(rankFilter?: string, seasonId?: strin
   if (mError || !matches) return [];
 
   const matchIds = matches.map(m => m.id);
-  const matchMap = new Map(matches.map(m => [m.id, m]));
 
   const { data: stats, error: sError } = await supabase
     .from('match_stats_map')

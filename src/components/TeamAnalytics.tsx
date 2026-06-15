@@ -3,12 +3,10 @@
 import { useState, useEffect } from 'react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    BarChart, Bar, Cell, Legend
+    BarChart, Bar, Legend
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type TeamPerformance, getTeamPerformance } from '@/lib/data';
-
-const COLORS = ['#FF4655', '#3FD1FF', '#FFB800', '#00FF94', '#8E44AD', '#E67E22'];
 
 interface Props {
     teams: { id: number; name: string; tag: string }[];

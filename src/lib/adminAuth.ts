@@ -16,10 +16,10 @@ export function isAuthorized(req: NextRequest) {
         // Check signature
         if (expected !== sig) return false;
 
-        // Check if token is within 12 hours (same as update/route.ts)
+        // Check if token is within 12 hours
         const fresh = Math.abs(Date.now() - Number(ts)) < 12 * 60 * 60 * 1000;
         return fresh;
-    } catch (e) {
+    } catch {
         return false;
     }
 }

@@ -10,7 +10,6 @@ import FeatureCard from "@/components/FeatureCard";
 import type { GlobalStats } from "@/lib/data";
 
 interface LandingClientProps {
-    seasonId: string;
     seasonNumber: string;
     stats: GlobalStats;
     topPlayer: { name: string; team: string; value: string; label: string };
@@ -18,7 +17,6 @@ interface LandingClientProps {
 }
 
 export default function LandingClient({
-    seasonId,
     seasonNumber,
     stats,
     topPlayer,

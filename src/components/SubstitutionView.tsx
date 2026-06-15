@@ -2,7 +2,7 @@
 
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    Legend, Cell, PieChart, Pie
+    Legend
 } from 'recharts';
 import { motion } from 'framer-motion';
 import { type SubstitutionAnalytics } from '@/lib/data';
@@ -10,8 +10,6 @@ import { type SubstitutionAnalytics } from '@/lib/data';
 interface Props {
     data: SubstitutionAnalytics;
 }
-
-const COLORS = ['#FF4655', '#3FD1FF', '#FFB800', '#00FF94', '#8E44AD'];
 
 export default function SubstitutionView({ data }: Props) {
     return (

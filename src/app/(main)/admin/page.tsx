@@ -1303,7 +1303,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
     const [format, setFormat] = useState<'BO1' | 'BO3' | 'BO5'>('BO3');
     const [forfeit, setForfeit] = useState(false);
     const [forfeitWinnerId, setForfeitWinnerId] = useState<number>(0);
-    const [jsonText, setJsonText] = useState("");
+    const [jsonText] = useState("");
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
     const [ghId, setGhId] = useState<string>("");
@@ -1904,9 +1904,7 @@ function PlayersAdmin({ selectedSeason }: { selectedSeason: string }) {
     useEffect(() => {
         import("@/lib/data").then(({ getTeamsBasic, getPlayers }) => {
             getTeamsBasic(selectedSeason).then(data => setTeams(data as any[]));
-            getPlayers(selectedSeason).then(data => {
-                // getPlayers currently returns a smaller set, if we need full data we do another fetch or use players from db directly
-                // but usually players exist globally, maybe just filter
+            getPlayers(selectedSeason).then(() => {
                 refresh();
             });
         });
@@ -2060,7 +2058,7 @@ function SnapshotManager({ selectedSeason }: { selectedSeason: string }) {
             const data = await res.json();
             setStatus(data.snapshot);
             setError(null);
-        } catch (e) {
+        } catch {
             setError("Failed to load snapshot status");
         } finally {
             setLoading(false);
@@ -2080,7 +2078,7 @@ function SnapshotManager({ selectedSeason }: { selectedSeason: string }) {
             } else {
                 setError(data.error || "Failed to generate snapshot");
             }
-        } catch (e) {
+        } catch {
             setError("Request failed");
         } finally {
             setGenerating(false);

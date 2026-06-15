@@ -25,7 +25,6 @@ export default function LeaderboardPodium({ topPlayers }: PodiumProps) {
 
                     const isFirst = player === topPlayers[0];
                     const isSecond = player === topPlayers[1];
-                    const isThird = player === topPlayers[2];
 
                     const height = isFirst ? 'h-full' : isSecond ? 'h-[75%]' : 'h-[60%]';
                     const color = isFirst ? 'from-val-red to-val-red/40' :
