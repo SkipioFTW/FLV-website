@@ -77,10 +77,15 @@ Checks all three history tables for gaps and fills them using current `players`/
 | `player_team_history` | `player_id`, `team_id`, `season_id`, `is_current=false` — from `default_team_id` |
 | `team_history` | `team_id`, `season_id`, `captain`, `co_captain`, `group_name` |
 
-Also marks **all** `player_team_history` entries for the old season as `is_current=false`,
-so they are correctly stored as historical (not active) affiliations.
-
 Already-existing rows are never overwritten.
+
+> **Important:** `is_current` is scoped per `(player_id, season_id)`, not "still active
+> today" — `lib/data.ts`'s `getPlayerStats` reads `season_id = X AND is_current = true`
+> to find a player's team for *any* season, including past ones. Never bulk-flip a past
+> season's rows to `is_current=false` — that breaks that season's team lookup once the
+> player's `default_team_id` changes. Only set `is_current=false` when a player has more
+> than one `team_id` row for the *same* season (a real mid-season swap); keep the most
+> recent row `true`.
 
 ### Step 4 — Record the season champion
 Prompts for the winning team's numeric ID and saves it as `winner_id` on the old season row.
@@ -129,7 +134,7 @@ Edit `'S24'` / `'S25'` at the top before running.
 □ Confirm each step when prompted
 □   Step 1: SQLite archive created ✓
 □   Step 2: All matches tagged with season_id ✓
-□   Step 3: All history tables filled + player_team_history marked historical ✓
+□   Step 3: All history tables filled ✓
 □   Step 4: Season champion (winner_id) recorded ✓
 □   Step 5: Old league snapshots deactivated ✓
 □   Step 6: New season created and activated ✓

@@ -56,7 +56,7 @@ SELECT
     p.id,
     p.default_team_id,
     'S24',
-    false
+    true
 FROM public.players p
 WHERE p.default_team_id IS NOT NULL
   AND NOT EXISTS (
@@ -65,12 +65,13 @@ WHERE p.default_team_id IS NOT NULL
         AND pth.season_id = 'S24'
   );
 
--- Mark ALL existing player_team_history entries for the old season
--- as is_current=false (they are now historical, not active).
-
-UPDATE public.player_team_history
-SET is_current = false
-WHERE season_id = 'S24';
+-- NOTE: Do NOT mark existing player_team_history rows for the old season as
+-- is_current=false. is_current is scoped per (player_id, season_id) and is read
+-- by lib/data.ts's getPlayerStats for ANY season (not just the active one) via
+-- `season_id = X AND is_current = true`. Flipping it to false breaks that lookup
+-- for the season that just ended once a player's default_team_id changes next
+-- season. Only flip is_current to false when a player has multiple team_id rows
+-- for the SAME season (e.g. a mid-season swap) — keep the most recent row true.
 
 
 -- ── STEP 3c: Snapshot team metadata ──────────────────────────
@@ -136,7 +137,8 @@ UNION ALL
 SELECT 'team_history',         season_id, COUNT(*)             FROM public.team_history           GROUP BY season_id
 ORDER BY tbl, season_id;
 
--- Check player_team_history — all old season entries should be is_current=false
+-- Check player_team_history — old season entries should be is_current=true
+-- (only false for a row superseded by a later same-season row for that player)
 SELECT season_id, is_current, COUNT(*) AS rows
 FROM public.player_team_history
 GROUP BY season_id, is_current

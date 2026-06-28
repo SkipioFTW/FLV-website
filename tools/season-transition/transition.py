@@ -10,7 +10,6 @@ WHAT IT DOES:
   2. Tags any untagged matches with the old season ID.
   3. Archives history tables: player_history, player_team_history, team_history.
      - Fills any gaps using current player/team data.
-     - Marks all player_team_history entries for old season as is_current=false.
   4. Records the season champion (winner_id) on the old season row.
   5. Deactivates any active league_snapshots (they belong to the old season).
   6. Creates the new season record in Supabase and activates it.
@@ -214,9 +213,8 @@ def step_tag_old_matches(supabase: "Client"):
 def step_archive_history(supabase: "Client"):
     """
     Snapshot player_history, player_team_history, and team_history for OLD_SEASON.
-    - Fills any gaps using current player/team live data.
-    - Marks all player_team_history entries for OLD_SEASON as is_current=false,
-      so they are correctly recorded as historical (not active) affiliations.
+    - Fills any gaps using current player/team live data, defaulting new
+      player_team_history rows to is_current=true (see note below).
     """
     print(f"\n{'═'*60}")
     print(f"STEP 3 — Validate & fill history tables for {OLD_SEASON}")
@@ -252,20 +250,20 @@ def step_archive_history(supabase: "Client"):
     if missing_pth:
         print(f"  {len(missing_pth)} players missing from player_team_history — will fill.")
         if confirm(f"Insert {len(missing_pth)} missing player_team_history rows for {OLD_SEASON}?"):
-            rows = [{"player_id": p["id"], "team_id": p["default_team_id"], "season_id": OLD_SEASON, "is_current": False} for p in missing_pth]
+            rows = [{"player_id": p["id"], "team_id": p["default_team_id"], "season_id": OLD_SEASON, "is_current": True} for p in missing_pth]
             supabase.table("player_team_history").insert(rows).execute()
             print(f"  ✓ Inserted {len(rows)} rows.")
     else:
         print(f"  ✓ player_team_history: no missing entries.")
 
-    # Mark ALL existing player_team_history entries for old season as is_current=false.
-    # They are historical affiliations and should not appear as "current".
-    if confirm(f"Mark all player_team_history entries for {OLD_SEASON} as is_current=false?"):
-        supabase.table("player_team_history") \
-            .update({"is_current": False}) \
-            .eq("season_id", OLD_SEASON) \
-            .execute()
-        print(f"  ✓ All {OLD_SEASON} player_team_history entries marked as historical.")
+    # NOTE: Do NOT mark player_team_history rows for OLD_SEASON as is_current=false.
+    # is_current is scoped per (player_id, season_id) — lib/data.ts's getPlayerStats
+    # filters on `season_id = X AND is_current = true` to find a player's team for
+    # ANY season, past or present. Flipping it to false here breaks that lookup for
+    # the season that just ended once a player's default_team_id changes next season.
+    # The only time is_current should be false within a season is when a player has
+    # multiple team_id rows for that same season (e.g. a mid-season swap) — in that
+    # case, only the most recent row should stay true.
 
     # ── team_history ─────────────────────────────────────────────────────────
     res = supabase.table("team_history").select("team_id", count="exact").eq("season_id", OLD_SEASON).execute()
