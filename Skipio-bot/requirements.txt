@@ -1,13 +1,8 @@
-discord
-flask
 discord.py
-cloudscraper
 pandas
+numpy
 requests
-PyGithub
 python-dotenv
 psycopg2-binary
-supabase
 matplotlib
-seaborn
 scipy

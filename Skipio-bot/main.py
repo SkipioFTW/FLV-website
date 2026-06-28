@@ -1,8 +1,25 @@
+import logging
+import asyncio
 import discord
 from discord.ext import commands
-import asyncio
-import os
 from config import DISCORD_TOKEN
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+COGS = [
+    'cogs.lifecycle',
+    'cogs.analytics',
+    'cogs.players',
+    'cogs.teams',
+    'cogs.elo_commands',
+    'cogs.matches',
+    'cogs.ai',
+]
+
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -11,14 +28,12 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # Load all cogs first
-        cogs = ['cogs.lifecycle', 'cogs.analytics', 'cogs.matches', 'cogs.ai']
-        for cog in cogs:
+        for cog in COGS:
             try:
                 await self.load_extension(cog)
-                print(f"Loaded extension: {cog}")
+                logger.info("Loaded extension: %s", cog)
             except Exception as e:
-                print(f"Failed to load extension {cog}: {e}")
+                logger.error("Failed to load extension %s: %s", cog, e)
         
         # After all cogs are loaded, trigger the sync
         lifecycle = self.get_cog("LifecycleCog")
@@ -29,6 +44,7 @@ async def main():
     bot = MyBot()
     async with bot:
         await bot.start(DISCORD_TOKEN)
+
 
 if __name__ == "__main__":
     try:

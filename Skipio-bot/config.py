@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,3 +24,4 @@ if not DISCORD_TOKEN:
     print("="*50)
     print("Please check your .env file")
     print("="*50 + "\n")
+    sys.exit(1)

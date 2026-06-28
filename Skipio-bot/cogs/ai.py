@@ -13,10 +13,7 @@ from config import PORTAL_URL
 def _post_ai_api(api_url, payload, headers):
     return http_requests.post(api_url, json=payload, headers=headers, timeout=30)
 
-# Design tokens
-V_RED   = 0xFF4655
-V_BLUE  = 0x3FD1FF
-V_TEAL  = 0x24FFAB
+from utils.design import C_RED as V_RED, C_BLUE as V_BLUE, C_TEAL as V_TEAL
 
 
 class AICog(commands.Cog):
@@ -91,7 +88,7 @@ class AICog(commands.Cog):
                         if first_msg.embeds and first_msg.embeds[0].footer and first_msg.embeds[0].footer.text:
                             m_match = re.search(r"Season (S\d+|all)", first_msg.embeds[0].footer.text)
                             if m_match: season = m_match.group(1)
-                    except:
+                    except Exception:
                         pass
                     
                     payload = {"message": message.content, "history": history_payload, "seasonId": season}

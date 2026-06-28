@@ -1,7 +1,11 @@
+import logging
 import discord
 from discord.ext import commands, tasks
 from database import get_conn
 from config import GUILD_ID
+
+logger = logging.getLogger(__name__)
+
 
 class LifecycleCog(commands.Cog):
     def __init__(self, bot):
@@ -9,7 +13,7 @@ class LifecycleCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print(f"InfoBot logged in as {self.bot.user}")
+        logger.info("Logged in as %s", self.bot.user)
         if not self.keep_alive.is_running():
             self.keep_alive.start()
 
@@ -20,8 +24,8 @@ class LifecycleCog(commands.Cog):
             with get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1")
-        except:
-            pass
+        except Exception as e:
+            logger.warning("keep_alive DB ping failed: %s", e)
 
     async def sync_commands(self):
         if GUILD_ID:
@@ -30,10 +34,11 @@ class LifecycleCog(commands.Cog):
             self.bot.tree.clear_commands(guild=None)
             await self.bot.tree.sync(guild=None)
             await self.bot.tree.sync(guild=guild)
-            print(f"InfoBot: Commands synced to guild {GUILD_ID} (Global scrubbed).")
+            logger.info("Commands synced to guild %s (global scrubbed)", GUILD_ID)
         else:
             await self.bot.tree.sync()
-            print("InfoBot: Commands synced globally.")
+            logger.info("Commands synced globally")
+
 
 async def setup(bot):
     await bot.add_cog(LifecycleCog(bot))

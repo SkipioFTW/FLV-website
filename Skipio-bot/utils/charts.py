@@ -4,25 +4,15 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as pe
-from matplotlib.patches import FancyArrowPatch
 from scipy.interpolate import make_interp_spline
 import numpy as np
-import seaborn as sns
 import pandas as pd
 import io
 from database import get_conn
-
-# ── Valorant Design Tokens ────────────────────────────────────────────────────
-V_RED     = "#FF4655"
-V_TEAL    = "#24FFAB"
-V_GOLD    = "#FFB800"
-V_BLUE    = "#3FD1FF"
-V_PURPLE  = "#B47FFF"
-V_BG      = "#0F1923"
-V_BG2     = "#1A2634"
-V_GRID    = "#1C3040"
-V_TEXT    = "#ECEDEE"
-V_MUTED   = "#7B8FA1"
+from utils.design import (
+    V_RED, V_TEAL, V_GOLD, V_BLUE, V_PURPLE,
+    V_BG, V_BG2, V_GRID, V_TEXT, V_MUTED,
+)
 
 def _valorant_style(fig, ax):
     """Apply unified Valorant dark theme to a figure."""

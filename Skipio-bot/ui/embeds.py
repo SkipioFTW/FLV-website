@@ -1,13 +1,6 @@
 import discord
 from database import get_conn
-
-# ── Valorant Design Tokens (echo of charts.py) ────────────────────────────────
-V_RED    = 0xFF4655
-V_TEAL   = 0x24FFAB
-V_GOLD   = 0xFFB800
-V_BLUE   = 0x3FD1FF
-V_PURPLE = 0xB47FFF
-V_DARK   = 0x0F1923
+from utils.design import C_RED as V_RED, C_TEAL as V_TEAL, C_GOLD as V_GOLD, C_BLUE as V_BLUE, C_PURPLE as V_PURPLE, C_DARK as V_DARK
 
 # Ordered medal ranks
 RANK_MEDALS = ["🥇", "🥈", "🥉"]
