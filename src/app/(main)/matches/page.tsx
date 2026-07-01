@@ -2,6 +2,8 @@ import Navbar from "@/components/Navbar";
 import { getAllMatches, getDefaultSeason } from "@/lib/data";
 import Image from "next/image";
 
+export const revalidate = 60;
+
 export default async function MatchesPage(props: {
     searchParams: Promise<{ season?: string }>;
 }) {

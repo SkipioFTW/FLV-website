@@ -2,6 +2,8 @@ import Navbar from "@/components/Navbar";
 import { getGlobalStats, getDefaultSeason, getLeaderboard, getStandings } from '@/lib/data';
 import LandingClient from './LandingClient';
 
+export const revalidate = 60;
+
 export default async function Home(props: {
     searchParams: Promise<{ season?: string }>;
 }) {
