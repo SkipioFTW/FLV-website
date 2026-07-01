@@ -3282,8 +3282,8 @@ export async function updateSessionActivity(ip: string) {
     try {
         const now = Math.floor(Date.now() / 1000);
         await supabase.from('session_activity').upsert(
-            { ip_address: ip, last_activity: now },
-            { onConflict: 'ip_address' }
+            { session_id: ip, ip_address: ip, last_activity: now },
+            { onConflict: 'session_id' }
         );
     } catch {
         // Silently fail if table doesn't exist or other issues

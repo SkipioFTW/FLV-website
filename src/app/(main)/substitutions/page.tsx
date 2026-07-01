@@ -3,7 +3,7 @@ import Navbar from '@/components/Navbar';
 import SubstitutionView from '@/components/SubstitutionView';
 import { getSubstitutionAnalytics, getDefaultSeason } from '@/lib/data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function SubstitutionsPage(props: {
     searchParams: Promise<{ type?: string, season?: string }>;

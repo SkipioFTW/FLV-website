@@ -2,7 +2,7 @@ import { getStandings, getMetaAnalytics, getDefaultSeason } from '@/lib/data';
 import Navbar from '@/components/Navbar';
 import StandingsTabs from '@/components/StandingsTabs';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function StandingsPage(props: {
     searchParams: Promise<{ season?: string }>;

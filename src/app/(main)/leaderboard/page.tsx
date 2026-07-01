@@ -3,7 +3,7 @@ import Navbar from '@/components/Navbar';
 import LeaderboardFilters from '@/components/LeaderboardFilters';
 import Link from 'next/link';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function LeaderboardPage(props: {
     searchParams: Promise<{ type?: string; season?: string }>;

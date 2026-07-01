@@ -2,8 +2,7 @@ import Navbar from "@/components/Navbar";
 import PlayoffsTabs from "@/components/PlayoffsTabs";
 import { getPlayoffMatches, getDefaultSeason } from "@/lib/data";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 60;
 
 export default async function PlayoffsPage(props: {
     searchParams: Promise<{ season?: string }>;

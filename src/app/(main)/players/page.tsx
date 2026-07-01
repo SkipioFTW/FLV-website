@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import PlayerAnalytics from '@/components/PlayerAnalytics';
 import { getPlayers, getDefaultSeason } from '@/lib/data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function PlayersPage(props: {
     searchParams: Promise<{ player_id?: string; season?: string }>

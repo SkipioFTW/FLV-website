@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import TeamComparison from '@/components/TeamComparison';
 import { getTeams, getDefaultSeason } from '@/lib/data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function TeamComparePage(props: {
     searchParams: Promise<{ season?: string }>;

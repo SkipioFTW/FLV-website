@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import TeamAnalytics from '@/components/TeamAnalytics';
 import { getTeams, getDefaultSeason } from '@/lib/data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function TeamsPage(props: {
     searchParams: Promise<{ team_id?: string; season?: string }>
