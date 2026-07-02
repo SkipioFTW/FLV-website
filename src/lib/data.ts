@@ -3709,7 +3709,17 @@ export const getPlayoffMatches = unstable_cache(getPlayoffMatches_uncached, ['ge
 export const getPlayoffProbability = unstable_cache(getPlayoffProbability_uncached, ['getPlayoffProbability'], { revalidate: 60 });
 export const getSimulationData = unstable_cache(getSimulationData_uncached, ['getSimulationData'], { revalidate: 60 });
 export const getSkipioLeaderboard = unstable_cache(getSkipioLeaderboard_uncached, ['getSkipioLeaderboard'], { revalidate: 60 });
-export const getStandings = unstable_cache(getStandings_uncached, ['getStandings'], { revalidate: 60 });
+// getStandings_uncached returns a Map, which unstable_cache silently flattens to
+// {} on the JSON round-trip (Map has no enumerable own properties) — cache the
+// serializable entries array instead and rehydrate the Map on the way out.
+const getStandingsEntriesCached = unstable_cache(
+    async (seasonId?: string) => Array.from((await getStandings_uncached(seasonId)).entries()),
+    ['getStandings'],
+    { revalidate: 60 }
+);
+export async function getStandings(seasonId?: string): Promise<Map<string, StandingsRow[]>> {
+    return new Map(await getStandingsEntriesCached(seasonId));
+}
 export const getSubstitutionAnalytics = unstable_cache(getSubstitutionAnalytics_uncached, ['getSubstitutionAnalytics'], { revalidate: 60 });
 export const getTeams = unstable_cache(getTeams_uncached, ['getTeams'], { revalidate: 60 });
 export const getTournamentWinProbability = unstable_cache(getTournamentWinProbability_uncached, ['getTournamentWinProbability'], { revalidate: 60 });
