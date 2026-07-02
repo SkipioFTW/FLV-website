@@ -1,10 +1,11 @@
+import { unstable_cache } from 'next/cache';
 import { supabase } from './supabase';
 
 /**
  * Get the current active season ID (the season with is_active = true,
  * falling back to the most recent season by ID if none is flagged active).
  */
-export async function getDefaultSeason(): Promise<string> {
+async function getDefaultSeason_uncached(): Promise<string> {
     try {
         const { data: active } = await supabase
             .from('seasons')
@@ -735,7 +736,7 @@ export type TeamPerformance = {
  * Points system: Winner gets 15, Loser gets min(rounds_scored, 12)
  * Returns grouped standings by group_name
  */
-export async function getStandings(seasonId?: string): Promise<Map<string, StandingsRow[]>> {
+async function getStandings_uncached(seasonId?: string): Promise<Map<string, StandingsRow[]>> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -930,7 +931,7 @@ export async function getStandings(seasonId?: string): Promise<Map<string, Stand
  * Fetch player leaderboard stats
  * Replicates production SQL logic: includes unique matches where status is 'completed'
  */
-export async function getLeaderboard(minGames: number = 0, matchType?: 'regular' | 'playoff', seasonId?: string): Promise<LeaderboardPlayer[]> {
+async function getLeaderboard_uncached(minGames: number = 0, matchType?: 'regular' | 'playoff', seasonId?: string): Promise<LeaderboardPlayer[]> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -1118,7 +1119,7 @@ export async function getLeaderboard(minGames: number = 0, matchType?: 'regular'
 /**
  * Fetch detailed analytics for all agents and maps (Meta Analytics)
  */
-export async function getMetaAnalytics(seasonId?: string): Promise<MetaAnalytics> {
+async function getMetaAnalytics_uncached(seasonId?: string): Promise<MetaAnalytics> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -1605,7 +1606,7 @@ export async function getPlayerStats(playerId: number, matchType?: 'regular' | '
 /**
  * Fetch all teams participating in a season
  */
-export async function getTeams(seasonId?: string): Promise<{ id: number; name: string; tag: string }[]> {
+async function getTeams_uncached(seasonId?: string): Promise<{ id: number; name: string; tag: string }[]> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -1639,7 +1640,7 @@ export async function getTeams(seasonId?: string): Promise<{ id: number; name: s
 /**
  * Fetch all players participating in a season
  */
-export async function getPlayers(seasonId?: string): Promise<{ id: number; name: string; riot_id: string }[]> {
+async function getPlayers_uncached(seasonId?: string): Promise<{ id: number; name: string; riot_id: string }[]> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -2030,7 +2031,7 @@ export type SubstitutionAnalytics = {
 /**
  * Fetch substitution analytics
  */
-export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff', seasonId?: string): Promise<SubstitutionAnalytics> {
+async function getSubstitutionAnalytics_uncached(matchType?: 'regular' | 'playoff', seasonId?: string): Promise<SubstitutionAnalytics> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -2164,7 +2165,7 @@ export async function getSubstitutionAnalytics(matchType?: 'regular' | 'playoff'
 /**
  * Fetch global tournament statistics for the homepage
  */
-export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
+async function getGlobalStats_uncached(seasonId?: string): Promise<GlobalStats> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -2222,7 +2223,7 @@ export async function getGlobalStats(seasonId?: string): Promise<GlobalStats> {
 /**
  * Fetch all matches for the match ledger
  */
-export async function getAllMatches(seasonId?: string): Promise<MatchEntry[]> {
+async function getAllMatches_uncached(seasonId?: string): Promise<MatchEntry[]> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -2313,7 +2314,7 @@ export type PlayoffMatch = MatchEntry & {
 /**
  * Fetch all playoff matches for the bracket view
  */
-export async function getPlayoffMatches(seasonId?: string): Promise<PlayoffMatch[]> {
+async function getPlayoffMatches_uncached(seasonId?: string): Promise<PlayoffMatch[]> {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const isAllTime = activeSeason === 'all';
@@ -2594,7 +2595,7 @@ export async function bulkCreateMatches(matches: (Omit<MatchEntry, 'id' | 'team1
     }
 }
 
-export async function getMatchDetails(matchId: number): Promise<{
+async function getMatchDetails_uncached(matchId: number): Promise<{
     match: {
         id: number;
         week: number;
@@ -3315,7 +3316,7 @@ export async function getTeamComparison(id1: number, id2: number) {
     return { t1, t2 };
 }
 
-export async function getSimulationData(seasonId?: string) {
+async function getSimulationData_uncached(seasonId?: string) {
     const activeSeason = seasonId || await getDefaultSeason();
     const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
     const [standingsMap, matchesRes] = await Promise.all([
@@ -3336,7 +3337,7 @@ export async function getSimulationData(seasonId?: string) {
 /**
  * Monte Carlo simulation for playoff probability
  */
-export async function getPlayoffProbability(iterations: number = 1000, seasonId?: string) {
+async function getPlayoffProbability_uncached(iterations: number = 1000, seasonId?: string) {
     const activeSeason = seasonId || await getDefaultSeason();
     const { data: season } = await supabase.from('seasons').select('is_active').eq('id', activeSeason).single();
     if (!season?.is_active) return [];
@@ -3423,7 +3424,7 @@ export async function getPlayoffProbability(iterations: number = 1000, seasonId?
 /**
  * Simulate the entire playoff bracket to get win probabilities for each team.
  */
-export async function getTournamentWinProbability(iterations: number = 1000, seasonId?: string) {
+async function getTournamentWinProbability_uncached(iterations: number = 1000, seasonId?: string) {
     try {
         const activeSeason = seasonId || await getDefaultSeason();
         const { data: season } = await supabase.from('seasons').select('is_active').eq('id', activeSeason).single();
@@ -3553,7 +3554,7 @@ export function calculateRawScore(acs: number, kd: number, adr: number, kast: nu
   return (acs * 0.40) + (kd * 30 * 0.30) + (adr * 0.20) + (kast * 0.10);
 }
 
-export async function getSkipioLeaderboard(rankFilter?: string, seasonId?: string): Promise<SkipioEntry[]> {
+async function getSkipioLeaderboard_uncached(rankFilter?: string, seasonId?: string): Promise<SkipioEntry[]> {
   // --- STEP A: Fetch ALL players (for global rank-group averages) ---
   const { data: allPlayersRaw, error: apError } = await supabase
     .from('players')
@@ -3692,3 +3693,23 @@ export async function getSkipioLeaderboard(rankFilter?: string, seasonId?: strin
 }
 
 
+
+// ── Cached exports ────────────────────────────────────────────────────────────
+// Public pages render dynamically (searchParams), so route-level revalidate
+// does not cache them. Caching here instead: each read hits Supabase at most
+// once per 60s per distinct arg set, regardless of traffic.
+export const getAllMatches = unstable_cache(getAllMatches_uncached, ['getAllMatches'], { revalidate: 60 });
+export const getDefaultSeason = unstable_cache(getDefaultSeason_uncached, ['getDefaultSeason'], { revalidate: 60 });
+export const getGlobalStats = unstable_cache(getGlobalStats_uncached, ['getGlobalStats'], { revalidate: 60 });
+export const getLeaderboard = unstable_cache(getLeaderboard_uncached, ['getLeaderboard'], { revalidate: 60 });
+export const getMatchDetails = unstable_cache(getMatchDetails_uncached, ['getMatchDetails'], { revalidate: 60 });
+export const getMetaAnalytics = unstable_cache(getMetaAnalytics_uncached, ['getMetaAnalytics'], { revalidate: 60 });
+export const getPlayers = unstable_cache(getPlayers_uncached, ['getPlayers'], { revalidate: 60 });
+export const getPlayoffMatches = unstable_cache(getPlayoffMatches_uncached, ['getPlayoffMatches'], { revalidate: 60 });
+export const getPlayoffProbability = unstable_cache(getPlayoffProbability_uncached, ['getPlayoffProbability'], { revalidate: 60 });
+export const getSimulationData = unstable_cache(getSimulationData_uncached, ['getSimulationData'], { revalidate: 60 });
+export const getSkipioLeaderboard = unstable_cache(getSkipioLeaderboard_uncached, ['getSkipioLeaderboard'], { revalidate: 60 });
+export const getStandings = unstable_cache(getStandings_uncached, ['getStandings'], { revalidate: 60 });
+export const getSubstitutionAnalytics = unstable_cache(getSubstitutionAnalytics_uncached, ['getSubstitutionAnalytics'], { revalidate: 60 });
+export const getTeams = unstable_cache(getTeams_uncached, ['getTeams'], { revalidate: 60 });
+export const getTournamentWinProbability = unstable_cache(getTournamentWinProbability_uncached, ['getTournamentWinProbability'], { revalidate: 60 });

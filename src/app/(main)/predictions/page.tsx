@@ -7,8 +7,6 @@ import { getSimulationData, getPlayoffProbability, getTournamentWinProbability }
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
-export const revalidate = 60;
-
 function PredictionsContent() {
   const searchParams = useSearchParams();
   const seasonId = searchParams.get('season') || undefined;
