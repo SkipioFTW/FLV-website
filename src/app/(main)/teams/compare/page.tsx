@@ -1,6 +1,6 @@
 import Navbar from '@/components/Navbar';
 import TeamComparison from '@/components/TeamComparison';
-import { getTeams, getDefaultSeason } from '@/lib/data';
+import { getTeamsCached as getTeams, getDefaultSeasonCached as getDefaultSeason } from '@/lib/data';
 
 export const revalidate = 60;
 

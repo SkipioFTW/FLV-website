@@ -1,6 +1,6 @@
 import Navbar from "@/components/Navbar";
 import PlayoffsTabs from "@/components/PlayoffsTabs";
-import { getPlayoffMatches, getDefaultSeason } from "@/lib/data";
+import { getPlayoffMatchesCached as getPlayoffMatches, getDefaultSeasonCached as getDefaultSeason } from "@/lib/data";
 
 export const revalidate = 60;
 

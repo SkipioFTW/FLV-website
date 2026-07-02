@@ -1,6 +1,6 @@
 import Navbar from '@/components/Navbar';
 import PlayerComparison from '@/components/PlayerComparison';
-import { getPlayers, getDefaultSeason } from '@/lib/data';
+import { getPlayersCached as getPlayers, getDefaultSeasonCached as getDefaultSeason } from '@/lib/data';
 
 export const revalidate = 60;
 

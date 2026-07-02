@@ -1,4 +1,4 @@
-import { getLeaderboard, getDefaultSeason } from '@/lib/data';
+import { getLeaderboardCached as getLeaderboard, getDefaultSeasonCached as getDefaultSeason } from '@/lib/data';
 import Navbar from '@/components/Navbar';
 import LeaderboardFilters from '@/components/LeaderboardFilters';
 import Link from 'next/link';

@@ -1,5 +1,5 @@
 import Navbar from "@/components/Navbar";
-import { getAllMatches, getDefaultSeason } from "@/lib/data";
+import { getAllMatchesCached as getAllMatches, getDefaultSeasonCached as getDefaultSeason } from "@/lib/data";
 import Image from "next/image";
 
 export const revalidate = 60;

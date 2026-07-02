@@ -3694,21 +3694,42 @@ async function getSkipioLeaderboard_uncached(rankFilter?: string, seasonId?: str
 
 
 
+// ── Uncached exports ──────────────────────────────────────────────────────────
+// Original public API, unchanged behavior. Safe to call from Client Components
+// (admin dashboard, Navbar, AIAnalyst, summary page) as well as Server Components.
+export const getAllMatches = getAllMatches_uncached;
+export const getDefaultSeason = getDefaultSeason_uncached;
+export const getGlobalStats = getGlobalStats_uncached;
+export const getLeaderboard = getLeaderboard_uncached;
+export const getMatchDetails = getMatchDetails_uncached;
+export const getMetaAnalytics = getMetaAnalytics_uncached;
+export const getPlayers = getPlayers_uncached;
+export const getPlayoffMatches = getPlayoffMatches_uncached;
+export const getPlayoffProbability = getPlayoffProbability_uncached;
+export const getSimulationData = getSimulationData_uncached;
+export const getSkipioLeaderboard = getSkipioLeaderboard_uncached;
+export const getStandings = getStandings_uncached;
+export const getSubstitutionAnalytics = getSubstitutionAnalytics_uncached;
+export const getTeams = getTeams_uncached;
+export const getTournamentWinProbability = getTournamentWinProbability_uncached;
+
 // ── Cached exports ────────────────────────────────────────────────────────────
-// Public pages render dynamically (searchParams), so route-level revalidate
-// does not cache them. Caching here instead: each read hits Supabase at most
-// once per 60s per distinct arg set, regardless of traffic.
-export const getAllMatches = unstable_cache(getAllMatches_uncached, ['getAllMatches'], { revalidate: 60 });
-export const getDefaultSeason = unstable_cache(getDefaultSeason_uncached, ['getDefaultSeason'], { revalidate: 60 });
-export const getGlobalStats = unstable_cache(getGlobalStats_uncached, ['getGlobalStats'], { revalidate: 60 });
-export const getLeaderboard = unstable_cache(getLeaderboard_uncached, ['getLeaderboard'], { revalidate: 60 });
-export const getMatchDetails = unstable_cache(getMatchDetails_uncached, ['getMatchDetails'], { revalidate: 60 });
-export const getMetaAnalytics = unstable_cache(getMetaAnalytics_uncached, ['getMetaAnalytics'], { revalidate: 60 });
-export const getPlayers = unstable_cache(getPlayers_uncached, ['getPlayers'], { revalidate: 60 });
-export const getPlayoffMatches = unstable_cache(getPlayoffMatches_uncached, ['getPlayoffMatches'], { revalidate: 60 });
-export const getPlayoffProbability = unstable_cache(getPlayoffProbability_uncached, ['getPlayoffProbability'], { revalidate: 60 });
-export const getSimulationData = unstable_cache(getSimulationData_uncached, ['getSimulationData'], { revalidate: 60 });
-export const getSkipioLeaderboard = unstable_cache(getSkipioLeaderboard_uncached, ['getSkipioLeaderboard'], { revalidate: 60 });
+// unstable_cache is a Server-only API (throws if reached from a Client Component
+// bundle), so these are separate opt-in exports rather than replacements of the
+// names above. Only genuinely server-rendered public pages should import these —
+// each read then hits Supabase at most once per 60s per distinct arg set,
+// regardless of traffic, instead of on every dynamic render.
+export const getAllMatchesCached = unstable_cache(getAllMatches_uncached, ['getAllMatches'], { revalidate: 60 });
+export const getDefaultSeasonCached = unstable_cache(getDefaultSeason_uncached, ['getDefaultSeason'], { revalidate: 60 });
+export const getGlobalStatsCached = unstable_cache(getGlobalStats_uncached, ['getGlobalStats'], { revalidate: 60 });
+export const getLeaderboardCached = unstable_cache(getLeaderboard_uncached, ['getLeaderboard'], { revalidate: 60 });
+export const getMatchDetailsCached = unstable_cache(getMatchDetails_uncached, ['getMatchDetails'], { revalidate: 60 });
+export const getMetaAnalyticsCached = unstable_cache(getMetaAnalytics_uncached, ['getMetaAnalytics'], { revalidate: 60 });
+export const getPlayersCached = unstable_cache(getPlayers_uncached, ['getPlayers'], { revalidate: 60 });
+export const getPlayoffMatchesCached = unstable_cache(getPlayoffMatches_uncached, ['getPlayoffMatches'], { revalidate: 60 });
+export const getPlayoffProbabilityCached = unstable_cache(getPlayoffProbability_uncached, ['getPlayoffProbability'], { revalidate: 60 });
+export const getSimulationDataCached = unstable_cache(getSimulationData_uncached, ['getSimulationData'], { revalidate: 60 });
+export const getSkipioLeaderboardCached = unstable_cache(getSkipioLeaderboard_uncached, ['getSkipioLeaderboard'], { revalidate: 60 });
 // getStandings_uncached returns a Map, which unstable_cache silently flattens to
 // {} on the JSON round-trip (Map has no enumerable own properties) — cache the
 // serializable entries array instead and rehydrate the Map on the way out.
@@ -3717,9 +3738,9 @@ const getStandingsEntriesCached = unstable_cache(
     ['getStandings'],
     { revalidate: 60 }
 );
-export async function getStandings(seasonId?: string): Promise<Map<string, StandingsRow[]>> {
+export async function getStandingsCached(seasonId?: string): Promise<Map<string, StandingsRow[]>> {
     return new Map(await getStandingsEntriesCached(seasonId));
 }
-export const getSubstitutionAnalytics = unstable_cache(getSubstitutionAnalytics_uncached, ['getSubstitutionAnalytics'], { revalidate: 60 });
-export const getTeams = unstable_cache(getTeams_uncached, ['getTeams'], { revalidate: 60 });
-export const getTournamentWinProbability = unstable_cache(getTournamentWinProbability_uncached, ['getTournamentWinProbability'], { revalidate: 60 });
+export const getSubstitutionAnalyticsCached = unstable_cache(getSubstitutionAnalytics_uncached, ['getSubstitutionAnalytics'], { revalidate: 60 });
+export const getTeamsCached = unstable_cache(getTeams_uncached, ['getTeams'], { revalidate: 60 });
+export const getTournamentWinProbabilityCached = unstable_cache(getTournamentWinProbability_uncached, ['getTournamentWinProbability'], { revalidate: 60 });

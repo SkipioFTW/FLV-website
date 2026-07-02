@@ -1,4 +1,4 @@
-import { getStandings, getMetaAnalytics, getDefaultSeason } from '@/lib/data';
+import { getStandingsCached as getStandings, getMetaAnalyticsCached as getMetaAnalytics, getDefaultSeasonCached as getDefaultSeason } from '@/lib/data';
 import Navbar from '@/components/Navbar';
 import StandingsTabs from '@/components/StandingsTabs';
 

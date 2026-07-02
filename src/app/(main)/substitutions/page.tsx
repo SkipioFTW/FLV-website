@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import SubstitutionView from '@/components/SubstitutionView';
-import { getSubstitutionAnalytics, getDefaultSeason } from '@/lib/data';
+import { getSubstitutionAnalyticsCached as getSubstitutionAnalytics, getDefaultSeasonCached as getDefaultSeason } from '@/lib/data';
 
 export const revalidate = 60;
 

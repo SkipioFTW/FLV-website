@@ -1,5 +1,5 @@
 import Navbar from "@/components/Navbar";
-import { getGlobalStats, getDefaultSeason, getLeaderboard, getStandings } from '@/lib/data';
+import { getGlobalStatsCached as getGlobalStats, getDefaultSeasonCached as getDefaultSeason, getLeaderboardCached as getLeaderboard, getStandingsCached as getStandings } from '@/lib/data';
 import LandingClient from './LandingClient';
 
 export const revalidate = 60;
