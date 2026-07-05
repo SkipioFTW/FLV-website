@@ -137,6 +137,7 @@ export async function POST(req: NextRequest) {
 
     const pushRow = (m: any, isSub: boolean, subForLabel?: string) => {
       rows.push({
+        rid: m.rid,
         player_id: labToId.get(m.rid) ?? null,
         is_sub: isSub,
         subbed_for_id: isSub ? (rosterMap.get(subForLabel || '') ?? null) : (labToId.get(m.rid) ?? null),
@@ -151,11 +152,14 @@ export async function POST(req: NextRequest) {
         fk: m.s.fk ?? null,
         fd: m.s.fd ?? null,
         mk: m.s.mk ?? null,
+        dd_delta: m.s.dd_delta ?? null,
         plants: m.s.plants ?? null,
         defuses: m.s.defuses ?? null,
         survived: m.s.survived ?? null,
         traded: m.s.traded ?? null,
         clutches: m.s.clutches ?? null,
+        clutches_details: m.s.clutches_details ?? null,
+        ability_casts: m.s.ability_casts ?? null,
       });
     };
 
@@ -170,26 +174,35 @@ export async function POST(req: NextRequest) {
       const label = missingRoster.shift() || (rosterLabels[0] || '');
       const pid = rosterMap.get(label) ?? null;
       rows.push({
+        rid: null,
         player_id: pid,
         is_sub: false,
+        is_filler: true,
         subbed_for_id: pid,
         agent: AGENTS[0],
         acs: 0, kills: 0, deaths: 0, assists: 0,
         adr: null, kast: null, hs_pct: null,
-        fk: null, fd: null, mk: null, plants: null,
+        fk: null, fd: null, mk: null, dd_delta: null, plants: null,
         defuses: null, survived: null, traded: null, clutches: null,
+        clutches_details: null, ability_casts: null,
       });
     }
-    return rows.slice(0, 5);
+    // Riot IDs present in the match JSON but with no matching player in the DB
+    const unmatched = teamSugRids.filter(rid => !labToId.has(rid));
+    return { rows: rows.slice(0, 5), unmatched };
   };
+
+  const team1 = processTeam(1, roster1);
+  const team2 = processTeam(2, roster2);
 
   return NextResponse.json({
     map_name: out.map_name,
     t1_rounds: Math.round(out.t1_rounds),
     t2_rounds: Math.round(out.t2_rounds),
     suggestedFormat,
-    team1Rows: processTeam(1, roster1),
-    team2Rows: processTeam(2, roster2),
+    team1Rows: team1.rows,
+    team2Rows: team2.rows,
+    unmatched: { team1: team1.unmatched, team2: team2.unmatched },
     rounds: out.rounds || [],
     playerRounds: resolvedPlayerRounds,
   });

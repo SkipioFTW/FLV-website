@@ -17,6 +17,7 @@ COGS = [
     'cogs.teams',
     'cogs.elo_commands',
     'cogs.matches',
+    'cogs.match_report',
     'cogs.ai',
 ]
 

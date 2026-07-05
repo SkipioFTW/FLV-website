@@ -25,7 +25,7 @@ Python sides (`Skipio-bot/`, `training/`) each have their own `requirements.txt`
 
 ## Environment
 
-Copy `.env.example` → `.env.local`. Key vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_USER`/`ADMIN_PASSWORD`/`ADMIN_TOKEN`, `PREDICTOR_GH_TOKEN`/`PREDICTOR_GITHUB_OWNER`/`PREDICTOR_GITHUB_REPO` (model retrain workflow dispatch), `HENDRIK_API_KEY` (HenrikDev Valorant API), `GEMINI_API_KEY` (AI analyst). `Skipio-bot/` and `tools/season-transition/` have their own `.env` files (gitignored) — see `Skipio-bot/BOT_SETUP.md`.
+Copy `.env.example` → `.env.local`. Key vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_USER`/`ADMIN_PASSWORD`/`ADMIN_TOKEN`, `PREDICTOR_GH_TOKEN`/`PREDICTOR_GITHUB_OWNER`/`PREDICTOR_GITHUB_REPO` (model retrain workflow dispatch), `HENDRIK_API_KEY` (HenrikDev Valorant API), `GEMINI_API_KEY` (AI analyst), `BOT_SECRET` (shared secret for server-to-server callers of the maps parse/save API). `Skipio-bot/` and `tools/season-transition/` have their own `.env` files (gitignored) — see `Skipio-bot/BOT_SETUP.md`.
 
 ## Architecture
 
@@ -50,6 +50,8 @@ Pages under `src/app/(main)/**/page.tsx` are server components that call `lib/da
 ### Admin auth
 `src/lib/adminAuth.ts` — not JWT despite some docs saying so. It's an HMAC-SHA256 signed cookie (`admin_session` = `timestamp.signature`, signed with `ADMIN_TOKEN`, 12h freshness window). `isAuthorized(req)` is the gate every `src/app/api/admin/**/route.ts` handler must call.
 
+**Exception:** `api/admin/maps/parse` and `api/admin/maps/save` have their own local `isAuthorized` that additionally accepts an `x-bot-secret` header matching `BOT_SECRET`. External repos depend on these two endpoints (and their response/request shapes): the **botlightvalorant** Discord bot (`/match report_result` captain match reporting) and the **FLV-Registration** staff panel, plus this repo's `Skipio-bot/cogs/match_report.py`. Don't rename or remove response fields (`team1Rows`/`team2Rows` row keys, `unmatched`, `t1_rounds`/`t2_rounds`) without checking those callers — additive changes only.
+
 ### AI Analyst — SQL agent (`src/lib/ai/chat.ts`, `src/lib/ai/db.ts`)
 The AI doesn't get a data snapshot — it's given the DB schema + standings rules in the system prompt and issues its own read-only `SELECT` queries (up to `MAX_SQL_ROUNDS`) via `executeAIQuery`, which calls the Supabase `exec_sql` RPC (enforces SELECT-only at the DB level too). Standings math is non-trivial (winner 15 pts, loser `min(rounds_won, 12)` pts, PD tiebreak) — there's an exact "STANDINGS TEMPLATE" SQL block embedded in the system prompt; extend that template rather than letting the model derive standings from scratch, since it has previously gotten this wrong. `FAT1`/`FAT2` are admin/test placeholder teams to exclude from real analysis, not satire — keep them excluded in any new query logic.
 
@@ -64,7 +66,10 @@ Core tables: `seasons`, `teams`, `players`, `matches`, `match_maps`, `match_stat
 ### External integrations
 - **GitHub** (`src/app/api/github/matches/**`) — match JSON submission/resolution flow, also used by the GitHub Actions retrain dispatch.
 - **HenrikDev API** (`src/app/api/henrikdev/match/route.ts`) — pulls live Valorant match data by tracker ID.
-- **Tracker.gg JSON** — parsed by `parseTrackerJson` in `lib/data.ts` into match/map/player stat rows (this is how match results get imported).
+- **Tracker.gg JSON** — parsed by `parseTrackerJson` / `parseHenrikDevJson` in `lib/data.ts` into match/map/player stat rows (this is how match results get imported).
+
+### Match result import flow
+All match entry paths converge on the same two endpoints: `POST /api/admin/maps/parse` (fetches tracker/HenrikDev data, matches Riot IDs against the `players` table, detects subs, returns per-team stat rows + `unmatched` Riot IDs) then `POST /api/admin/maps/save` per map (writes `match_maps`/`match_stats_map`/`match_rounds`/`match_player_rounds`, recomputes match totals/winner, advances playoff brackets). The admin panel's Unified Score Editor does this client-side; Discord bots call the endpoints with `x-bot-secret`. Match-level forfeits are not saved through this flow — they're a direct `matches` update (13-0, `is_forfeit=1`, `maps_played=0`, map detail rows wiped).
 
 ## Documentation map
 
