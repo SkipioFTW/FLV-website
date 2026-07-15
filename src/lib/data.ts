@@ -638,6 +638,49 @@ export function parseHenrikDevJson(
             kastMap.set(rid, totalRounds > 0 ? Math.round((set.size / totalRounds) * 100) : 0);
         });
 
+        // Calculate clutches (1vX rounds won) per player (HenrikDev doesn't provide them).
+        // Replay each round's kills in time order; when a player becomes the last one
+        // alive on their team with X enemies still up, they're the clutch candidate at
+        // vX (later kills don't upgrade the X). It counts if their team wins the round
+        // and the candidate is still alive at the end ("last player standing wins").
+        const clutchesMap = new Map<string, number>();
+        const clutchDetailsMap = new Map<string, { v1: number; v2: number; v3: number; v4: number; v5: number }>();
+        const ridTeamNum = new Map<string, 1 | 2>();
+        allPlayers.forEach((p: any) => {
+            const rid = lower(`${p.name}#${p.tag}`);
+            if (!rid) return;
+            ridTeamNum.set(rid, lower(p.team_id || p.team) === lower(hdevTeam1Team) ? 1 : 2);
+        });
+
+        roundsData.forEach((r: any, roundIdx: number) => {
+            const alive: [Set<string>, Set<string>] = [new Set(), new Set()];
+            ridTeamNum.forEach((teamNum, rid) => alive[teamNum - 1].add(rid));
+
+            const candidates: ({ rid: string; enemies: number } | null)[] = [null, null];
+            // roundKills arrays were already sorted by time for the FK/FD pass
+            (roundKills[roundIdx] || []).forEach((k: any) => {
+                const vRid = ridOf(k.victim);
+                const vTeam = ridTeamNum.get(vRid);
+                if (!vTeam) return;
+                alive[vTeam - 1].delete(vRid);
+                for (const t of [0, 1] as const) {
+                    if (!candidates[t] && alive[t].size === 1 && alive[1 - t].size >= 1) {
+                        candidates[t] = { rid: [...alive[t]][0], enemies: alive[1 - t].size };
+                    }
+                }
+            });
+
+            const winnerTeam = lower(r.winning_team || "") === lower(hdevTeam1Team) ? 1 : 2;
+            const winner = candidates[winnerTeam - 1];
+            if (winner && alive[winnerTeam - 1].has(winner.rid)) {
+                clutchesMap.set(winner.rid, (clutchesMap.get(winner.rid) || 0) + 1);
+                const details = clutchDetailsMap.get(winner.rid) || { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0 };
+                const key = `v${Math.min(winner.enemies, 5)}` as keyof typeof details;
+                details[key] += 1;
+                clutchDetailsMap.set(winner.rid, details);
+            }
+        });
+
         allPlayers.forEach((p: any) => {
             const rid = lower(`${p.name}#${p.tag}`);
             if (!rid) return;
@@ -678,8 +721,9 @@ export function parseHenrikDevJson(
                 acs, k, d, a,
                 adr, kast: kastMap.get(rid) ?? 0, hs_pct,
                 fk, fd, mk, dd_delta,
-                plants, defuses, survived: survivedMap.get(rid) ?? 0, traded: tradedMap.get(rid) ?? 0, clutches: 0,
-                clutches_details: { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0 },
+                plants, defuses, survived: survivedMap.get(rid) ?? 0, traded: tradedMap.get(rid) ?? 0,
+                clutches: clutchesMap.get(rid) ?? 0,
+                clutches_details: clutchDetailsMap.get(rid) ?? { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0 },
                 ability_casts
             };
         });
