@@ -78,6 +78,30 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
+  // Gradually backfill players.puuid from match data (best-effort, never blocks the save)
+  if (Array.isArray(playerStats)) {
+    try {
+      const withPuuid = playerStats.filter((s: any) => s.player_id && s.puuid);
+      if (withPuuid.length > 0) {
+        const { data: missing } = await supabaseServer
+          .from('players')
+          .select('id')
+          .in('id', withPuuid.map((s: any) => s.player_id))
+          .is('puuid', null);
+        const missingIds = new Set((missing || []).map((p: any) => p.id));
+        await Promise.all(
+          withPuuid
+            .filter((s: any) => missingIds.has(s.player_id))
+            .map((s: any) =>
+              supabaseServer.from('players').update({ puuid: s.puuid }).eq('id', s.player_id)
+            )
+        );
+      }
+    } catch (e) {
+      console.error('puuid backfill failed:', e);
+    }
+  }
+
   // Insert rounds data
   if (Array.isArray(rounds) && rounds.length > 0) {
     await supabaseServer.from('match_rounds').insert(

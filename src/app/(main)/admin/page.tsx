@@ -1450,6 +1450,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                 jsonRosterMatches.forEach(m => {
                     rows.push({
                         player_id: labToId.get(m.rid),
+                        puuid: m.s.puuid ?? null,
                         is_sub: false,
                         subbed_for_id: labToId.get(m.rid),
                         agent: m.s.agent,
@@ -1480,6 +1481,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                     const subForLabel = missingRoster.shift() || (rosterLabels[0] || "");
                     rows.push({
                         player_id: labToId.get(m.rid),
+                        puuid: m.s.puuid ?? null,
                         is_sub: true,
                         subbed_for_id: rosterMap.get(subForLabel),
                         agent: m.s.agent,

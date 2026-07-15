@@ -139,6 +139,7 @@ export async function POST(req: NextRequest) {
       rows.push({
         rid: m.rid,
         player_id: labToId.get(m.rid) ?? null,
+        puuid: m.s.puuid ?? null,
         is_sub: isSub,
         subbed_for_id: isSub ? (rosterMap.get(subForLabel || '') ?? null) : (labToId.get(m.rid) ?? null),
         agent: m.s.agent,
@@ -176,6 +177,7 @@ export async function POST(req: NextRequest) {
       rows.push({
         rid: null,
         player_id: pid,
+        puuid: null,
         is_sub: false,
         is_filler: true,
         subbed_for_id: pid,

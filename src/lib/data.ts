@@ -554,6 +554,90 @@ export function parseHenrikDevJson(
             });
         });
 
+        // Calculate KAST per player (HenrikDev doesn't provide it).
+        // A player earns credit for a round via a Kill, Assist, Surviving,
+        // or being Traded (their killer dies within 5s of the kill).
+        // KAST% = credited rounds / total rounds.
+        const totalRounds = roundsData.length;
+        const puuidToRid = new Map<string, string>();
+        allPlayers.forEach((p: any) => {
+            if (p.puuid) puuidToRid.set(p.puuid, lower(`${p.name}#${p.tag}`));
+        });
+        const ridOf = (actor: any) => {
+            if (!actor) return "";
+            return puuidToRid.get(actor.puuid) || lower(`${actor.name}#${actor.tag}`);
+        };
+
+        const kastRounds = new Map<string, Set<number>>();
+        const deadInRound = new Map<string, Set<number>>();
+        const tradedMap = new Map<string, number>();
+        allPlayers.forEach((p: any) => {
+            const rid = lower(`${p.name}#${p.tag}`);
+            if (!rid) return;
+            kastRounds.set(rid, new Set());
+            deadInRound.set(rid, new Set());
+        });
+
+        // Kills, assists, deaths
+        killsData.forEach((k: any) => {
+            const roundIdx = k.round;
+            // Riot logs kills after the game ends; skip those
+            if (typeof roundIdx !== "number" || roundIdx >= totalRounds) return;
+            const kRid = ridOf(k.killer);
+            const vRid = ridOf(k.victim);
+            if (kRid !== vRid) { // self-kills don't count
+                kastRounds.get(kRid)?.add(roundIdx);
+                deadInRound.get(vRid)?.add(roundIdx);
+            }
+            (k.assistants || []).forEach((a: any) => {
+                const aRid = ridOf(a);
+                if (aRid !== kRid) kastRounds.get(aRid)?.add(roundIdx);
+            });
+        });
+
+        // Trades: the victim gets credit if their killer dies within 5s
+        const TRADE_WINDOW_MS = 5000;
+        killsData.forEach((k: any, i: number) => {
+            const roundIdx = k.round;
+            if (typeof roundIdx !== "number" || roundIdx >= totalRounds) return;
+            const killerRid = ridOf(k.killer);
+            const victimRid = ridOf(k.victim);
+            const t1 = k.time_in_round_in_ms || 0;
+            for (let j = i + 1; j < killsData.length; j++) {
+                const nk = killsData[j];
+                if (nk.round !== roundIdx) break; // moved to next round
+                const t2 = nk.time_in_round_in_ms || 0;
+                if (t2 - t1 > TRADE_WINDOW_MS) break; // past the trade window
+                if (ridOf(nk.victim) === killerRid) {
+                    const credited = kastRounds.get(victimRid);
+                    if (credited) {
+                        credited.add(roundIdx);
+                        tradedMap.set(victimRid, (tradedMap.get(victimRid) || 0) + 1);
+                    }
+                    break; // trade found, stop looking for this victim
+                }
+            }
+        });
+
+        // Survivors: any round without a death counts
+        const survivedMap = new Map<string, number>();
+        deadInRound.forEach((deaths, rid) => {
+            const credited = kastRounds.get(rid)!;
+            let survived = 0;
+            for (let r = 0; r < totalRounds; r++) {
+                if (!deaths.has(r)) {
+                    credited.add(r);
+                    survived++;
+                }
+            }
+            survivedMap.set(rid, survived);
+        });
+
+        const kastMap = new Map<string, number>();
+        kastRounds.forEach((set, rid) => {
+            kastMap.set(rid, totalRounds > 0 ? Math.round((set.size / totalRounds) * 100) : 0);
+        });
+
         allPlayers.forEach((p: any) => {
             const rid = lower(`${p.name}#${p.tag}`);
             if (!rid) return;
@@ -590,10 +674,11 @@ export function parseHenrikDevJson(
             suggestions[rid] = {
                 team_num: pTeam,
                 agent,
+                puuid: p.puuid || null,
                 acs, k, d, a,
-                adr, kast: 0, hs_pct,
+                adr, kast: kastMap.get(rid) ?? 0, hs_pct,
                 fk, fd, mk, dd_delta,
-                plants, defuses, survived: 0, traded: 0, clutches: 0,
+                plants, defuses, survived: survivedMap.get(rid) ?? 0, traded: tradedMap.get(rid) ?? 0, clutches: 0,
                 clutches_details: { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0 },
                 ability_casts
             };
