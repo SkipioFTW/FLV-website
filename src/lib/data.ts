@@ -689,7 +689,7 @@ export function parseHenrikDevJson(
             const winningTeamStr = r.winning_team || "";
             const pWinTeam = lower(winningTeamStr) === lower(hdevTeam1Team) ? team1_id : team2_id;
             
-            roundsArr.push({
+            const roundEntry = {
                 round_number: rNum + 1,
                 winning_team_id: pWinTeam,
                 win_type: r.result || r.end_type || "Elimination",
@@ -697,8 +697,9 @@ export function parseHenrikDevJson(
                 defuse: r.defuse !== undefined ? !!r.defuse : (r.bomb_defused || false),
                 economy_t1: 0,
                 economy_t2: 0
-            });
-            
+            };
+            roundsArr.push(roundEntry);
+
             const rStats = r.stats || r.player_stats || [];
             if (Array.isArray(rStats)) {
                 rStats.forEach((ps: any) => {
@@ -721,9 +722,14 @@ export function parseHenrikDevJson(
                                 roundDamage += de.damage || 0;
                             });
                         }
-                        
+
                         const weapon = ps.economy?.weapon?.name || null;
                         const spent = ps.economy?.loadout_value || 0;
+
+                        // Team round economy = summed loadout values
+                        const teamNum = suggestions[targetRid]?.team_num;
+                        if (teamNum === 1) roundEntry.economy_t1 += spent;
+                        else if (teamNum === 2) roundEntry.economy_t2 += spent;
                         
                         playerRoundsArr.push({
                             rid: targetRid,
