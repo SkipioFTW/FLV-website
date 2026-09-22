@@ -31,6 +31,15 @@ export default function AdminPage() {
     const [stats, setStats] = useState<GlobalStats>({ activeTeams: 0, matchesPlayed: 0, livePlayers: 0, totalPoints: 0 });
     const [selectedSeason, setSelectedSeason] = useState<string>('');
     const [availableSeasons, setAvailableSeasons] = useState<{ id: string, name: string, is_active: boolean }[]>([]);
+    // Whether the dropdown's current selection is the season actually marked
+    // is_active in the DB right now. selectedSeason persists indefinitely in
+    // localStorage (see admin_selected_season below) so staff can browse old
+    // seasons' data across reloads -- but any WRITE action, especially ones
+    // that generate/advance playoff bracket matches, must not blindly trust a
+    // leftover selection from a past session. false-by-default (not true)
+    // until availableSeasons has actually loaded, so nothing write-gated on
+    // this flag can fire during the brief window before we know for sure.
+    const isActiveSeason = availableSeasons.some(s => s.id === selectedSeason && s.is_active);
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);
     const [authLoading, setAuthLoading] = useState(true);
@@ -380,6 +389,7 @@ export default function AdminPage() {
                                 teams={teams}
                                 matches={playoffMatches}
                                 selectedSeason={selectedSeason}
+                                isActiveSeason={isActiveSeason}
                                 onUpdate={async () => {
                                     const pm = await getPlayoffMatches(selectedSeason);
                                     setPlayoffMatches(pm);
@@ -786,11 +796,13 @@ function PlayoffBracketEditor({
     teams,
     matches,
     selectedSeason,
+    isActiveSeason,
     onUpdate
 }: {
     teams: { id: number, name: string, tag: string, group_name: string }[],
     matches: PlayoffMatch[],
     selectedSeason: string,
+    isActiveSeason: boolean,
     onUpdate: () => void
 }) {
     const [saving, setSaving] = useState(false);
@@ -830,8 +842,23 @@ function PlayoffBracketEditor({
         } catch { }
     }, []);
 
+    // ROOT-CAUSE FIX: this interval used to run purely off the `autoAdvance`
+    // checkbox, using whatever `selectedSeason` happened to be in state --
+    // and `selectedSeason` is restored from localStorage on every page load
+    // (see admin_selected_season in the parent) and never re-validated
+    // against the DB's actual `is_active` season. A staff member who opened
+    // /admin with an old season still selected (e.g. to check historical
+    // stats) would have this loop silently recompute and re-write that OLD
+    // season's playoff bracket using CURRENT match results -- which is
+    // exactly how S25's real playoff bracket ended up duplicated into S23
+    // and S24 under the wrong season_id (see
+    // tools/season-transition/cleanup_playoff_duplicates.py in the
+    // FLV-Registration repo for the confirmed incident and cleanup). Gating
+    // on `isActiveSeason` here means the loop can only ever run against
+    // whichever season is actually live right now, no matter what's
+    // sitting in localStorage.
     useEffect(() => {
-        if (!autoAdvance) return;
+        if (!autoAdvance || !isActiveSeason) return;
         const id = setInterval(async () => {
             try {
                 const { computeBracketAdvancements, applyBracketAdvancements } = await import('@/lib/data');
@@ -843,7 +870,25 @@ function PlayoffBracketEditor({
             } catch { }
         }, 8000);
         return () => clearInterval(id);
-    }, [autoAdvance, matches.length, selectedSeason]);
+    }, [autoAdvance, isActiveSeason, matches.length, selectedSeason]);
+
+    // Manual bracket-writing buttons (Create Round 1 / Seed Round 2 BYEs /
+    // Confirm & Apply) still need to work against a non-active season on
+    // purpose sometimes -- e.g. fixing up historical data -- so this doesn't
+    // block them outright the way the auto-advance interval is blocked
+    // above. It just forces an explicit, specific confirmation instead of
+    // letting a leftover season selection silently take a write action.
+    const confirmSeasonWrite = (actionLabel: string): boolean => {
+        if (isActiveSeason) return true;
+        const seasonLabel = selectedSeason || '(unknown)';
+        return window.confirm(
+            `${seasonLabel} is NOT the currently active season.\n\n` +
+            `${actionLabel} will write playoff match data tagged season_id='${seasonLabel}'. ` +
+            `This is normal if you're intentionally fixing historical data for that season, ` +
+            `but if you meant to work on the live season, cancel and re-check the season dropdown first.\n\n` +
+            `Continue anyway?`
+        );
+    };
 
     const rounds = [
         { id: 1, name: "Round of 24", slots: 8 },
@@ -904,6 +949,7 @@ function PlayoffBracketEditor({
                         <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">Round 1 (8 matches)</div>
                         <button
                             onClick={async () => {
+                                if (!confirmSeasonWrite('Creating Round 1 matches')) return;
                                 setCreatingR1(true);
                                 try {
                                     const existing = matches.filter(m => m.playoff_round === 1).length;
@@ -922,7 +968,16 @@ function PlayoffBracketEditor({
                                                 match_type: 'playoff',
                                                 playoff_round: 1,
                                                 bracket_pos: i,
-                                                bracket_label: `R1 #${i}`
+                                                bracket_label: `R1 #${i}`,
+                                                // Explicit, not left to the server's "inject active
+                                                // season if missing" fallback -- that fallback reads
+                                                // whatever the DB says is_active AT THE MOMENT this
+                                                // request lands, which is a second, independent way
+                                                // the wrong season can end up on a new playoff match
+                                                // if this button is ever clicked in a race with a
+                                                // season transition. Stamping it here ties the write
+                                                // to what the admin UI actually has selected.
+                                                season_id: selectedSeason
                                             });
                                         }
                                         await fetch('/api/admin/matches/bulk', {
@@ -961,13 +1016,31 @@ function PlayoffBracketEditor({
                         </div>
                         <button
                             onClick={async () => {
+                                if (!confirmSeasonWrite('Seeding Round 2 BYEs')) return;
                                 setCreatingR2(true);
                                 try {
                                     for (let i = 1; i <= 8; i++) {
                                         const byeTeam = round2Byes[i - 1];
+                                        // ROOT-CAUSE FIX: this lookup used to have NO season_id
+                                        // filter at all -- since every season creates a full R2
+                                        // bracket, `match_type=playoff, playoff_round=2,
+                                        // bracket_pos=i` matches a DIFFERENT row in EVERY season
+                                        // simultaneously, and `.limit(1)` with no explicit order
+                                        // returns whichever one Postgres happens to hand back
+                                        // first (in practice, the oldest/lowest-id season). That
+                                        // meant seeding round 2 for the CURRENT season could
+                                        // silently overwrite an OLD season's row's team1_id
+                                        // instead of touching the current season's row at all --
+                                        // this is one confirmed mechanism behind the S25 bracket
+                                        // data bleeding into S23/S24 (see
+                                        // tools/season-transition/cleanup_playoff_duplicates.py
+                                        // in FLV-Registration). Scoping by season_id here makes
+                                        // this button only ever touch the currently-selected
+                                        // season's own row.
                                         const { data: existing } = await supabase
                                             .from('matches')
                                             .select('*')
+                                            .eq('season_id', selectedSeason)
                                             .eq('match_type', 'playoff')
                                             .eq('playoff_round', 2)
                                             .eq('bracket_pos', i)
@@ -995,7 +1068,13 @@ function PlayoffBracketEditor({
                                                     match_type: 'playoff',
                                                     playoff_round: 2,
                                                     bracket_pos: i,
-                                                    bracket_label: `R2 #${i}`
+                                                    bracket_label: `R2 #${i}`,
+                                                    // Explicit, not left to the server's "inject
+                                                    // active season if missing" fallback -- see
+                                                    // note on "Create Round 1 Matches" above for
+                                                    // why relying on that fallback is itself part
+                                                    // of the same root cause.
+                                                    season_id: selectedSeason
                                                 })
                                             } as any);
                                         }
@@ -1092,6 +1171,7 @@ function PlayoffBracketEditor({
                         <button
                             onClick={async () => {
                                 if (proposals.length === 0) return;
+                                if (!confirmSeasonWrite('Applying these bracket advancements')) return;
                                 const { applyBracketAdvancements } = await import('@/lib/data');
                                 setSaving(true);
                                 try {
@@ -1107,17 +1187,21 @@ function PlayoffBracketEditor({
                         >
                             Confirm & Apply
                         </button>
-                        <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/60">
+                        <label
+                            className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ${isActiveSeason ? 'text-foreground/60' : 'text-foreground/30 cursor-not-allowed'}`}
+                            title={isActiveSeason ? undefined : `Auto-advance only runs for the currently active season, not ${selectedSeason || 'this one'}`}
+                        >
                             <input
                                 type="checkbox"
                                 checked={autoAdvance}
+                                disabled={!isActiveSeason}
                                 onChange={e => {
                                     const v = e.target.checked;
                                     setAutoAdvance(v);
                                     try { window.localStorage.setItem('playoffs_auto_advance', v ? '1' : '0'); } catch { }
                                 }}
                             />
-                            Auto-advance
+                            Auto-advance{!isActiveSeason ? ' (inactive season)' : ''}
                         </label>
                     </div>
                 </div>

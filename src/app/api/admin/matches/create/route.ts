@@ -7,15 +7,26 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   // Inject active season if missing
+  const { data: activeSeason } = await supabaseServer
+    .from('seasons')
+    .select('id')
+    .eq('is_active', true)
+    .single();
   if (!body.season_id) {
-    const { data: activeSeason } = await supabaseServer
-      .from('seasons')
-      .select('id')
-      .eq('is_active', true)
-      .single();
     if (activeSeason) {
       body.season_id = activeSeason.id;
     }
+  } else if (activeSeason && body.season_id !== activeSeason.id && body.match_type === 'playoff') {
+    // Not blocked -- staff sometimes need to intentionally write/fix
+    // historical-season playoff data -- but this is the exact write shape
+    // (a playoff match, tagged with a non-active season_id) that caused the
+    // real S25 bracket to get duplicated into S23/S24 (see
+    // tools/season-transition/cleanup_playoff_duplicates.py in the
+    // FLV-Registration repo). Logging it means a repeat isn't silent.
+    console.warn(
+      `[admin/matches/create] playoff match created with season_id=${body.season_id} ` +
+      `while active season is ${activeSeason.id} — round=${body.playoff_round} pos=${body.bracket_pos}`
+    );
   }
 
   const { data, error } = await supabaseServer

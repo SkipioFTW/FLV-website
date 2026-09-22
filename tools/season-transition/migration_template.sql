@@ -5,7 +5,7 @@
 --          Editor if you prefer SQL over the Python script,
 --          or as a fallback if the Python script fails.
 --
--- BEFORE RUNNING: Replace every occurrence of 'S24' and 'S25'
+-- BEFORE RUNNING: Replace every occurrence of 'S25' and 'S26'
 --                 with your actual OLD and NEW season IDs.
 --
 -- Run in order — each section is safe to re-run (idempotent).
@@ -15,18 +15,18 @@
 -- ── STEP 1: Ensure both season records exist ──────────────────
 
 INSERT INTO public.seasons (id, name, is_active)
-VALUES ('S24', 'Season 24', false)
+VALUES ('S25', 'Season 25', false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.seasons (id, name, is_active)
-VALUES ('S25', 'Season 25', false)
+VALUES ('S26', 'Season 26', false)
 ON CONFLICT (id) DO NOTHING;
 
 
 -- ── STEP 2: Tag any untagged matches as the old season ────────
 
 UPDATE public.matches
-SET season_id = 'S24'
+SET season_id = 'S25'
 WHERE season_id IS NULL;
 
 
@@ -36,14 +36,14 @@ WHERE season_id IS NULL;
 INSERT INTO public.player_history (player_id, season_id, rank)
 SELECT
     p.id,
-    'S24',
+    'S25',
     p.rank
 FROM public.players p
 WHERE p.rank IS NOT NULL
   AND NOT EXISTS (
       SELECT 1 FROM public.player_history ph
       WHERE ph.player_id = p.id
-        AND ph.season_id = 'S24'
+        AND ph.season_id = 'S25'
   );
 
 
@@ -55,14 +55,14 @@ INSERT INTO public.player_team_history (player_id, team_id, season_id, is_curren
 SELECT
     p.id,
     p.default_team_id,
-    'S24',
+    'S25',
     true
 FROM public.players p
 WHERE p.default_team_id IS NOT NULL
   AND NOT EXISTS (
       SELECT 1 FROM public.player_team_history pth
       WHERE pth.player_id = p.id
-        AND pth.season_id = 'S24'
+        AND pth.season_id = 'S25'
   );
 
 -- NOTE: Do NOT mark existing player_team_history rows for the old season as
@@ -79,7 +79,7 @@ WHERE p.default_team_id IS NOT NULL
 INSERT INTO public.team_history (team_id, season_id, captain, co_captain, group_name)
 SELECT
     t.id,
-    'S24',
+    'S25',
     t.captain,
     t.co_captain,
     t.group_name
@@ -87,8 +87,20 @@ FROM public.teams t
 WHERE NOT EXISTS (
     SELECT 1 FROM public.team_history th
     WHERE th.team_id = t.id
-      AND th.season_id = 'S24'
+      AND th.season_id = 'S25'
 );
+
+
+-- ── STEP 3d: Snapshot fantasy data for the old season (optional) ──
+-- Fantasy is season-scoped via season_id but has no automated rollover here.
+-- fantasy_teams/fantasy_rounds/fantasy_lineups/fantasy_results/fantasy_settings
+-- all belong to the old season already (written explicitly by api/fantasy.js /
+-- api/fantasy-admin.js) — nothing to migrate, just confirm they exist before
+-- moving on. New fantasy_rounds for the new season are created via the
+-- Fantasy Admin tab, not by this script.
+
+SELECT COUNT(*) AS fantasy_teams_old   FROM public.fantasy_teams   WHERE season_id = 'S25';
+SELECT COUNT(*) AS fantasy_rounds_old  FROM public.fantasy_rounds  WHERE season_id = 'S25';
 
 
 -- ── STEP 4: Record the season champion (optional) ─────────────
@@ -98,7 +110,7 @@ WHERE NOT EXISTS (
 
 -- UPDATE public.seasons
 -- SET winner_id = 999
--- WHERE id = 'S24';
+-- WHERE id = 'S25';
 
 
 -- ── STEP 5: Deactivate old league snapshots ───────────────────
@@ -117,7 +129,7 @@ UPDATE public.seasons SET is_active = false;
 -- Activate the new one
 UPDATE public.seasons
 SET is_active = true
-WHERE id = 'S25';
+WHERE id = 'S26';
 
 
 -- ── STEP 7: Verification queries ─────────────────────────────

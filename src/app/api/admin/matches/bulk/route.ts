@@ -16,10 +16,17 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (activeSeason) {
-    matches = matches.map((m: any) => ({
-      ...m,
-      season_id: m.season_id || activeSeason.id
-    }));
+    matches = matches.map((m: any) => {
+      if (m.season_id && m.season_id !== activeSeason.id && m.match_type === 'playoff') {
+        // See the matching comment in matches/create/route.ts — not blocked,
+        // just logged, since intentional historical-season fixes are valid.
+        console.warn(
+          `[admin/matches/bulk] playoff match created with season_id=${m.season_id} ` +
+          `while active season is ${activeSeason.id} — round=${m.playoff_round} pos=${m.bracket_pos}`
+        );
+      }
+      return { ...m, season_id: m.season_id || activeSeason.id };
+    });
   }
 
   const { error } = await supabaseServer.from('matches').insert(matches);

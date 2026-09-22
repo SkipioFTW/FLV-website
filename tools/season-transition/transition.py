@@ -19,6 +19,12 @@ WHAT IT DOES NOT DO:
   - Add new teams / players for the new season (do that via the Admin Panel).
   - Set match schedules for the new season.
   - Change default_team_id on players (do that after rosters are confirmed).
+  - Create fantasy_rounds for the new season (do that via the Fantasy Admin tab).
+  - Bump CURRENT_SEASON_ID/CURRENT_SEASON_NAME in the FLV-Registration repo
+    (js/shared/config.js, and the seasonOf() fallback in api/fantasy.js /
+    api/fantasy-admin.js — wrangler.jsonc has no CURRENT_SEASON_ID var today,
+    so those hardcoded JS fallbacks are what actually take effect). That repo
+    is separate from this one and this script does not touch it.
 
 USAGE:
   1. Copy the project root .env.local file next to this script, OR set env
@@ -42,9 +48,9 @@ from pathlib import Path
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — edit these before running
 # ─────────────────────────────────────────────────────────────────────────────
-OLD_SEASON      = "S24"          # The season that is ENDING
-NEW_SEASON      = "S25"          # The NEW season to create
-NEW_SEASON_NAME = "Season 25"
+OLD_SEASON      = "S25"          # The season that is ENDING
+NEW_SEASON      = "S26"          # The NEW season to create
+NEW_SEASON_NAME = "Season 26"
 
 # The SQLite archive file will be placed next to this script.
 ARCHIVE_PATH = Path(__file__).parent / f"flv_{OLD_SEASON}_archive.db"
@@ -125,6 +131,18 @@ TABLES_TO_ARCHIVE = [
     "match_stats_map",
     "match_rounds",
     "match_player_rounds",
+    # Fantasy (added mid-S25 — season-scoped via season_id)
+    "fantasy_teams",
+    "fantasy_rounds",
+    "fantasy_lineups",
+    "fantasy_results",
+    "fantasy_settings",
+    # Lockout league (season-scoped via season_id/linked_season — verify still
+    # in active use before relying on this; not referenced in the current
+    # DATABASE-ARCHITECTURE.md table inventory as of S25)
+    "lockout_matches",
+    "lockout_teams",
+    "lockout_roster",
     # Misc (handled gracefully if absent)
     "match_substitutions",
     "league_snapshots",
