@@ -17,6 +17,17 @@ import { executeAIQuery } from './db';
 // ─── Database Schema Context ──────────────────────────────────────────────────
 // This is given to the AI so it knows what tables and columns exist.
 // DO NOT include sensitive columns here.
+// S26 dropped the old 6-per-group / 24-team play-in format for a clean
+// 4-groups x top-4 = 16-team bracket (Round of 16 straight through to the
+// Final, no play-ins). Seasons before S26 really did have play-ins, so the
+// AI's own knowledge of "what round is what" has to branch on which season
+// it's actually being asked about — a blind rewrite here would just make it
+// confidently wrong about S23-S25 history instead of S26 onward.
+function isPreS26Format(seasonId: string): boolean {
+    const n = parseInt(String(seasonId).replace(/\D/g, ''), 10);
+    return Number.isFinite(n) && n < 26;
+}
+
 const getDbSchema = (seasonId: string) => `
 DATABASE SCHEMA (Valorant FLV League):
 
@@ -36,8 +47,10 @@ KEY NOTES:
 - STANDINGS: Use the STANDINGS TEMPLATE from your instructions — do not derive it from scratch.
 - POINTS MATH: Winner gets 15 pts. Loser gets min(total rounds won across the match's maps, 12) pts (a "moral victory" cap, NOT 0).
 - TIE-BREAKERS: 1. Points DESC, 2. PD (Points - Points Against) DESC.
-- PLAYOFF ROUNDS: 1: Play-ins, 2: R16, 3: quarters, 4: semis, 5: GRAND FINAL.
-- If asking for "The Final", filter by playoff_round = 5.
+- PLAYOFF ROUNDS: ${isPreS26Format(seasonId)
+        ? '1: Play-ins, 2: R16, 3: quarters, 4: semis, 5: GRAND FINAL (this format applied through S25 only).'
+        : '1: R16, 2: quarters, 3: semis, 4: GRAND FINAL (no play-ins — S26 moved to 4 groups x top-4 qualify = 16 teams exactly).'}
+- If asking for "The Final", filter by playoff_round = ${isPreS26Format(seasonId) ? 5 : 4}.
 - ALWAYS filter by 'season_id' = '${seasonId}'.
 - Excluded teams: 'FAT1', 'FAT2'.
 `;

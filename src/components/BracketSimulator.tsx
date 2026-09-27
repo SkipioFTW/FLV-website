@@ -60,20 +60,26 @@ export default function BracketSimulator({ initialMatches }: Props) {
         }
     }, [simulatedWinners]);
 
+    // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into Round
+    // of 16 -- no play-in round (that only existed for the old 6-per-group /
+    // 24-team format, where the top 2 got a bye and the other 4 played in).
     const rounds = [
-        { id: 1, name: "Play-ins", slots: 8 },
-        { id: 2, name: "Round of 16", slots: 8 },
-        { id: 3, name: "Quarter-finals", slots: 4 },
-        { id: 4, name: "Semi-finals", slots: 2 },
-        { id: 5, name: "Grand Final", slots: 1 }
+        { id: 1, name: "Round of 16", slots: 8 },
+        { id: 2, name: "Quarter-finals", slots: 4 },
+        { id: 3, name: "Semi-finals", slots: 2 },
+        { id: 4, name: "Grand Final", slots: 1 }
     ];
 
     const simulatedMatches = useMemo(() => {
         const matches = new Map<string, Match>();
         initialMatches.forEach(m => matches.set(`${m.playoff_round}:${m.bracket_pos}`, { ...m }));
 
-        // Advance logic
-        for (let r = 1; r < 5; r++) {
+        // Advance logic -- sibling pairing for every round, including round 1
+        // (pos 1&2 -> pos 1 next round, 3&4 -> pos 2, etc). No more "R1 -> R2
+        // same bracket_pos" special case: that assumed round 1 was a play-in
+        // feeding a bye slot at the SAME position in round 2, which doesn't
+        // exist in the 16-team no-bye format.
+        for (let r = 1; r < rounds.length; r++) {
             for (let p = 1; p <= (rounds[r - 1]?.slots || 0); p++) {
                 const key = `${r}:${p}`;
                 const match = matches.get(key);
@@ -85,28 +91,20 @@ export default function BracketSimulator({ initialMatches }: Props) {
                 const winnerTeam = getTeam(winnerId);
                 if (!winnerTeam || winnerTeam.id === 0) continue;
 
-                if (r === 1) {
-                    // R1 -> R2 (same bracket_pos)
-                    const targetKey = `2:${p}`;
-                    const targetMatch = matches.get(targetKey) || { id: 0, playoff_round: 2, bracket_pos: p, team1: { id: 0, name: 'TBD', logo: null }, team2: { id: 0, name: 'TBD', logo: null } };
-                    targetMatch.team2 = winnerTeam;
-                    matches.set(targetKey, targetMatch);
-                } else {
-                    // R2+ -> Sibling pairing
-                    const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
-                    const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
-                    const targetKey = `${r + 1}:${targetPos}`;
-                    const targetMatch = matches.get(targetKey) || { id: 0, playoff_round: r + 1, bracket_pos: targetPos, team1: { id: 0, name: 'TBD', logo: null }, team2: { id: 0, name: 'TBD', logo: null } };
+                const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
+                const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
+                const targetKey = `${r + 1}:${targetPos}`;
+                const targetMatch = matches.get(targetKey) || { id: 0, playoff_round: r + 1, bracket_pos: targetPos, team1: { id: 0, name: 'TBD', logo: null }, team2: { id: 0, name: 'TBD', logo: null } };
 
-                    if (p < siblingPos) targetMatch.team1 = winnerTeam;
-                    else targetMatch.team2 = winnerTeam;
+                if (p < siblingPos) targetMatch.team1 = winnerTeam;
+                else targetMatch.team2 = winnerTeam;
 
-                    matches.set(targetKey, targetMatch);
-                }
+                matches.set(targetKey, targetMatch);
             }
         }
 
         return matches;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `rounds` is a stable-content literal and `getTeam` derives only from the already-tracked `teamsById`
     }, [initialMatches, simulatedWinners, teamsById]);
 
     const handlePickWinner = (round: number, pos: number, teamId: number) => {
@@ -122,8 +120,8 @@ export default function BracketSimulator({ initialMatches }: Props) {
         const currentSimMatches = new Map<string, Match>();
         initialMatches.forEach(m => currentSimMatches.set(`${m.playoff_round}:${m.bracket_pos}`, { ...m }));
 
-        for (let r = 1; r <= 5; r++) {
-            const roundSlots = r === 1 ? 8 : r === 2 ? 8 : r === 3 ? 4 : r === 4 ? 2 : 1;
+        for (let r = 1; r <= rounds.length; r++) {
+            const roundSlots = rounds[r - 1]?.slots || 0;
             for (let p = 1; p <= roundSlots; p++) {
                 const key = `${r}:${p}`;
                 const match = currentSimMatches.get(key);
@@ -153,29 +151,18 @@ export default function BracketSimulator({ initialMatches }: Props) {
                     newWinners[key] = winnerId;
                     const winnerTeam = getTeam(winnerId);
 
-                    if (winnerTeam && winnerTeam.id !== 0) {
-                        if (r === 1) {
-                            const targetKey = `2:${p}`;
-                            const target = currentSimMatches.get(targetKey) || {
-                                id: 0, playoff_round: 2, bracket_pos: p,
-                                team1: { id: 0, name: 'TBD', logo: null },
-                                team2: { id: 0, name: 'TBD', logo: null }
-                            };
-                            target.team2 = winnerTeam;
-                            currentSimMatches.set(targetKey, target);
-                        } else if (r < 5) {
-                            const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
-                            const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
-                            const targetKey = `${r + 1}:${targetPos}`;
-                            const target = currentSimMatches.get(targetKey) || {
-                                id: 0, playoff_round: r + 1, bracket_pos: targetPos,
-                                team1: { id: 0, name: 'TBD', logo: null },
-                                team2: { id: 0, name: 'TBD', logo: null }
-                            };
-                            if (p < siblingPos) target.team1 = winnerTeam;
-                            else target.team2 = winnerTeam;
-                            currentSimMatches.set(targetKey, target);
-                        }
+                    if (winnerTeam && winnerTeam.id !== 0 && r < rounds.length) {
+                        const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
+                        const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
+                        const targetKey = `${r + 1}:${targetPos}`;
+                        const target = currentSimMatches.get(targetKey) || {
+                            id: 0, playoff_round: r + 1, bracket_pos: targetPos,
+                            team1: { id: 0, name: 'TBD', logo: null },
+                            team2: { id: 0, name: 'TBD', logo: null }
+                        };
+                        if (p < siblingPos) target.team1 = winnerTeam;
+                        else target.team2 = winnerTeam;
+                        currentSimMatches.set(targetKey, target);
                     }
                 }
             }
@@ -262,7 +249,7 @@ export default function BracketSimulator({ initialMatches }: Props) {
                             {Array.from({ length: round.slots }).map((_, idx) => (
                                 <div key={`${round.id}-${idx + 1}`} className="relative">
                                     <MatchCard round={round.id} pos={idx + 1} />
-                                    {round.id < 5 && (
+                                    {round.id < rounds.length && (
                                         <div className="absolute -right-2 top-1/2 w-2 h-px bg-white/10" />
                                     )}
                                 </div>

@@ -49,6 +49,9 @@ export default function StandingsView({ groupedStandings }: Props) {
         );
     }
 
+    // S26: top 4 per group qualify directly for the Round of 16 -- no more
+    // BYE (top 2) vs Round of 24 play-in (3rd-6th) split, since that only
+    // existed for the old 6-per-group / 24-team format.
     const getQualificationStatus = (rank: number, team: TeamStanding) => {
         const matchesLeft = TOTAL_WEEKS - team.Played;
         const maxPossiblePoints = team.Points + (matchesLeft * 15); // Best case: win all remaining
@@ -56,29 +59,24 @@ export default function StandingsView({ groupedStandings }: Props) {
         // Get the current standings for this group
         const currentGroupStandings = groupedStandings.get(selectedGroup) || [];
 
-        // Check if mathematically eliminated (can't reach 6th place)
-        if (rank > 6) {
-            const sixthPlacePoints = currentGroupStandings[5]?.Points || 0;
-            if (maxPossiblePoints < sixthPlacePoints) {
+        // Check if mathematically eliminated (can't reach 4th place)
+        if (rank > 4) {
+            const fourthPlacePoints = currentGroupStandings[3]?.Points || 0;
+            if (maxPossiblePoints < fourthPlacePoints) {
                 return 'eliminated';
             }
         }
 
-        // Top 2: BYE to playoffs
-        if (rank <= 2) return 'bye';
-
-        // 3-6: Round of 24
-        if (rank >= 3 && rank <= 6) return 'r24';
+        // Top 4 qualify directly for the Round of 16
+        if (rank <= 4) return 'qualified';
 
         return 'none';
     };
 
     const getRowClassName = (status: string) => {
         switch (status) {
-            case 'bye':
+            case 'qualified':
                 return 'border-l-4 border-green-500 bg-green-500/5';
-            case 'r24':
-                return 'border-l-4 border-val-blue bg-val-blue/5';
             case 'eliminated':
                 return 'border-l-4 border-val-red bg-val-red/5';
             default:
@@ -110,11 +108,7 @@ export default function StandingsView({ groupedStandings }: Props) {
             <div className="mb-6 flex flex-wrap gap-4 text-sm">
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-green-500 rounded"></div>
-                    <span className="text-foreground/60">Top 2: BYE Round</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-val-blue rounded"></div>
-                    <span className="text-foreground/60">3rd-6th: Round of 24</span>
+                    <span className="text-foreground/60">Top 4: Qualified for Round of 16</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-val-red rounded"></div>

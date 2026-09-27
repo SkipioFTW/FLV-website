@@ -808,34 +808,8 @@ function PlayoffBracketEditor({
     const [saving, setSaving] = useState(false);
     const [proposals, setProposals] = useState<Array<any>>([]);
     const [creatingR1, setCreatingR1] = useState(false);
-    const [creatingR2, setCreatingR2] = useState(false);
-    const [round2Byes, setRound2Byes] = useState<Array<number | null>>(Array.from({ length: 8 }, () => null));
-    const [byeOptions, setByeOptions] = useState<Array<{ id: number, name: string, tag: string, group_name: string }>>([]);
     const [autoAdvance, setAutoAdvance] = useState(true);
     useEffect(() => {
-        import('@/lib/data').then(({ getStandings }) => {
-            getStandings().then(gs => {
-                const opts: Array<{ id: number, name: string, tag: string, group_name: string }> = [];
-                const autoByes: Array<number | null> = Array.from({ length: 8 }, () => null);
-
-                // Collect top 2 from each group
-                const groups = Array.from(gs.keys()).sort();
-                groups.forEach((group, gIdx) => {
-                    const rows = gs.get(group) || [];
-                    rows.slice(0, 2).forEach((r, rIdx) => {
-                        const team = { id: r.id, name: r.name, tag: r.tag || '', group_name: group };
-                        opts.push(team);
-
-                        // Heuristic for seeding (G1#1->Pos1, G1#2->Pos2, G2#1->Pos3, etc.)
-                        const pos = (gIdx * 2) + rIdx;
-                        if (pos < 8) autoByes[pos] = r.id;
-                    });
-                });
-                setByeOptions(opts);
-                // Only auto-populate if currently empty
-                setRound2Byes(prev => prev.every(v => v === null) ? autoByes : prev);
-            });
-        });
         try {
             const av = window.localStorage.getItem('playoffs_auto_advance');
             if (av) setAutoAdvance(av === '1');
@@ -890,12 +864,14 @@ function PlayoffBracketEditor({
         );
     };
 
+    // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into Round of
+    // 16 -- no play-in round (that only existed for the old 6-per-group /
+    // 24-team format, where the top 2 got a bye and the other 4 played in).
     const rounds = [
-        { id: 1, name: "Round of 24", slots: 8 },
-        { id: 2, name: "Round of 16", slots: 8 },
-        { id: 3, name: "Quarter-finals", slots: 4 },
-        { id: 4, name: "Semi-finals", slots: 2 },
-        { id: 5, name: "Grand Final", slots: 1 }
+        { id: 1, name: "Round of 16", slots: 8 },
+        { id: 2, name: "Quarter-finals", slots: 4 },
+        { id: 3, name: "Semi-finals", slots: 2 },
+        { id: 4, name: "Grand Final", slots: 1 }
     ];
 
     const getMatchAt = (roundId: number, pos: number) =>
@@ -944,155 +920,66 @@ function PlayoffBracketEditor({
                 )}
             </div>
             <div className="glass p-4 rounded border border-white/5">
-                <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">Round 1 (8 matches)</div>
-                        <button
-                            onClick={async () => {
-                                if (!confirmSeasonWrite('Creating Round 1 matches')) return;
-                                setCreatingR1(true);
-                                try {
-                                    const existing = matches.filter(m => m.playoff_round === 1).length;
-                                    const needed = Math.max(0, 8 - existing);
-                                    if (needed > 0) {
-                                        const payload = [];
-                                        for (let i = existing + 1; i <= 8; i++) {
-                                            payload.push({
-                                                week: 7,
-                                                group_name: 'Playoffs',
-                                                team1_id: null,
-                                                team2_id: null,
-                                                status: 'scheduled',
-                                                format: 'BO3',
-                                                maps_played: 0,
-                                                match_type: 'playoff',
-                                                playoff_round: 1,
-                                                bracket_pos: i,
-                                                bracket_label: `R1 #${i}`,
-                                                // Explicit, not left to the server's "inject active
-                                                // season if missing" fallback -- that fallback reads
-                                                // whatever the DB says is_active AT THE MOMENT this
-                                                // request lands, which is a second, independent way
-                                                // the wrong season can end up on a new playoff match
-                                                // if this button is ever clicked in a race with a
-                                                // season transition. Stamping it here ties the write
-                                                // to what the admin UI actually has selected.
-                                                season_id: selectedSeason
-                                            });
-                                        }
-                                        await fetch('/api/admin/matches/bulk', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify(payload)
-                                        } as any);
-                                    }
-                                    onUpdate();
-                                } finally {
-                                    setCreatingR1(false);
-                                }
-                            }}
-                            className="px-4 py-2 bg-val-blue text-white rounded text-xs font-black uppercase tracking-widest disabled:opacity-50"
-                            disabled={creatingR1}
-                        >
-                            {creatingR1 ? "Creating..." : "Create Round 1 Matches"}
-                        </button>
+                <div className="space-y-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">
+                        Round of 16 (8 matches, 16 teams — top 4 from each group)
                     </div>
-                    <div className="space-y-3">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">Round 2 BYE Seeds (8 matches)</div>
-                        <div className="grid grid-cols-2 gap-2">
-                            {round2Byes.map((val, idx) => (
-                                <select
-                                    key={idx}
-                                    value={val || 0}
-                                    onChange={e => {
-                                        const next = [...round2Byes]; next[idx] = parseInt(e.target.value) || null; setRound2Byes(next);
-                                    }}
-                                    className="bg-white/5 border border-white/10 rounded p-2 text-xs"
-                                >
-                                    <option value={0}>BYE Seed #{idx + 1}</option>
-                                    {byeOptions.map(t => <option key={t.id} value={t.id}>{t.name} [{t.tag}] • {t.group_name}</option>)}
-                                </select>
-                            ))}
-                        </div>
-                        <button
-                            onClick={async () => {
-                                if (!confirmSeasonWrite('Seeding Round 2 BYEs')) return;
-                                setCreatingR2(true);
-                                try {
-                                    for (let i = 1; i <= 8; i++) {
-                                        const byeTeam = round2Byes[i - 1];
-                                        // ROOT-CAUSE FIX: this lookup used to have NO season_id
-                                        // filter at all -- since every season creates a full R2
-                                        // bracket, `match_type=playoff, playoff_round=2,
-                                        // bracket_pos=i` matches a DIFFERENT row in EVERY season
-                                        // simultaneously, and `.limit(1)` with no explicit order
-                                        // returns whichever one Postgres happens to hand back
-                                        // first (in practice, the oldest/lowest-id season). That
-                                        // meant seeding round 2 for the CURRENT season could
-                                        // silently overwrite an OLD season's row's team1_id
-                                        // instead of touching the current season's row at all --
-                                        // this is one confirmed mechanism behind the S25 bracket
-                                        // data bleeding into S23/S24 (see
-                                        // tools/season-transition/cleanup_playoff_duplicates.py
-                                        // in FLV-Registration). Scoping by season_id here makes
-                                        // this button only ever touch the currently-selected
-                                        // season's own row.
-                                        const { data: existing } = await supabase
-                                            .from('matches')
-                                            .select('*')
-                                            .eq('season_id', selectedSeason)
-                                            .eq('match_type', 'playoff')
-                                            .eq('playoff_round', 2)
-                                            .eq('bracket_pos', i)
-                                            .limit(1);
-                                        if (existing && existing.length > 0) {
-                                            // Ensure existing match has correct playoff metadata (self-healing)
-                                            await updateMatch(existing[0].id, {
-                                                team1_id: byeTeam || existing[0].team1_id,
-                                                match_type: 'playoff',
-                                                playoff_round: 2,
-                                                bracket_pos: i
-                                            });
-                                        } else {
-                                            await fetch('/api/admin/matches/create', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                    week: 8,
-                                                    group_name: 'Playoffs',
-                                                    team1_id: byeTeam || null,
-                                                    team2_id: null,
-                                                    status: 'scheduled',
-                                                    format: 'BO3',
-                                                    maps_played: 0,
-                                                    match_type: 'playoff',
-                                                    playoff_round: 2,
-                                                    bracket_pos: i,
-                                                    bracket_label: `R2 #${i}`,
-                                                    // Explicit, not left to the server's "inject
-                                                    // active season if missing" fallback -- see
-                                                    // note on "Create Round 1 Matches" above for
-                                                    // why relying on that fallback is itself part
-                                                    // of the same root cause.
-                                                    season_id: selectedSeason
-                                                })
-                                            } as any);
-                                        }
-                                    }
-                                    onUpdate();
-                                } finally {
-                                    setCreatingR2(false);
-                                }
-                            }}
-                            className="px-4 py-2 bg-val-red text-white rounded text-xs font-black uppercase tracking-widest disabled:opacity-50"
-                            disabled={creatingR2}
-                        >
-                            {creatingR2 ? "Seeding..." : "Seed Round 2 BYEs"}
-                        </button>
+                    <div className="text-[10px] text-foreground/40">
+                        Creates 8 empty matches. Assign all 16 teams via the Team 1 / Team 2
+                        dropdowns on each match card below — there are no byes in this format.
                     </div>
+                    <button
+                        onClick={async () => {
+                            if (!confirmSeasonWrite('Creating Round of 16 matches')) return;
+                            setCreatingR1(true);
+                            try {
+                                const existing = matches.filter(m => m.playoff_round === 1).length;
+                                const needed = Math.max(0, 8 - existing);
+                                if (needed > 0) {
+                                    const payload = [];
+                                    for (let i = existing + 1; i <= 8; i++) {
+                                        payload.push({
+                                            week: 7,
+                                            group_name: 'Playoffs',
+                                            team1_id: null,
+                                            team2_id: null,
+                                            status: 'scheduled',
+                                            format: 'BO3',
+                                            maps_played: 0,
+                                            match_type: 'playoff',
+                                            playoff_round: 1,
+                                            bracket_pos: i,
+                                            bracket_label: `R1 #${i}`,
+                                            // Explicit, not left to the server's "inject active
+                                            // season if missing" fallback -- that fallback reads
+                                            // whatever the DB says is_active AT THE MOMENT this
+                                            // request lands, which is a second, independent way
+                                            // the wrong season can end up on a new playoff match
+                                            // if this button is ever clicked in a race with a
+                                            // season transition. Stamping it here ties the write
+                                            // to what the admin UI actually has selected.
+                                            season_id: selectedSeason
+                                        });
+                                    }
+                                    await fetch('/api/admin/matches/bulk', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(payload)
+                                    } as any);
+                                }
+                                onUpdate();
+                            } finally {
+                                setCreatingR1(false);
+                            }
+                        }}
+                        className="px-4 py-2 bg-val-blue text-white rounded text-xs font-black uppercase tracking-widest disabled:opacity-50"
+                        disabled={creatingR1}
+                    >
+                        {creatingR1 ? "Creating..." : "Create Round of 16 Matches"}
+                    </button>
                 </div>
             </div>
-            <div className="min-w-[1000px] grid grid-cols-5 gap-6">
+            <div className="min-w-[1000px] grid grid-cols-4 gap-6">
                 {rounds.map((round) => (
                     <div key={round.id} className="space-y-4">
                         <div className="text-center font-display text-sm font-black uppercase tracking-widest text-foreground/60">
@@ -1115,9 +1002,6 @@ function PlayoffBracketEditor({
                                             <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40">
                                                 Match #{match.id}
                                             </div>
-                                            {round.id === 2 && !match.team2.id && (
-                                                <span className="text-[8px] font-black uppercase tracking-widest text-val-blue/60 bg-val-blue/10 px-1.5 py-0.5 rounded-sm">BYE Slot</span>
-                                            )}
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 items-center">
                                             <div>

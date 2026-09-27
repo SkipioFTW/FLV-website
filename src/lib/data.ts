@@ -412,12 +412,13 @@ export function parseTrackerJson(
     }
 }
 
+// S26: 4 rounds (Round of 16, Quarterfinals, Semifinals, Grand Final) — no
+// play-in round, since 4 groups x top-4 qualify = 16 teams exactly.
 export const PLAYOFF_ROUND_WEEKS: Record<number, number> = {
     1: 7,
     2: 8,
     3: 9,
-    4: 10,
-    5: 11
+    4: 10
 };
 
 export function parseHenrikDevJson(
@@ -2954,9 +2955,9 @@ export async function saveMapResults(
 /**
  * Advance playoff bracket when a match updates to completed.
  *
- * 24-team bracket format:
- *   Round 1 (Play-ins, 8 matches): winners advance 1-to-1 to R2 same bracket_pos
- *   Round 2+ (16→QF→SF→F): winners pair as siblings (pos 1&2→1, 3&4→2, etc.)
+ * S26+ 16-team bracket format (no play-ins/byes):
+ *   Every round, including Round 1 (Round of 16), pairs winners as siblings
+ *   (pos 1&2→1, 3&4→2, etc.) through QF→SF→Final.
  */
 export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void> {
     try {
@@ -2972,92 +2973,65 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
         const pos: number = m.bracket_pos || 0;
         if (!pos) return;
 
-        if (round === 1) {
-            // ── R1 → R2: 1-to-1 mapping (play-in winner fills the empty slot at same bracket_pos in R2)
-            const { data: r2Match } = await supabase
+        // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into
+        // Round of 16 (round 1) — no play-in, no byes. This used to special-
+        // case round 1 as a play-in that fed a bye slot in round 2 (see
+        // tools/season-transition/cleanup_playoff_duplicates.py in the
+        // FLV-Registration repo for the incident that pattern was
+        // eventually implicated in). Every round, including round 1, is now
+        // just sibling pairing: pos 1&2 -> pos 1 next round, 3&4 -> pos 2,
+        // etc. — identical logic PlayoffBracketEditor's "Create Round of 16"
+        // button assumes when it seeds round 1 with real bracket_pos values
+        // 1-8 and no TBD byes.
+        const siblingPos = pos % 2 === 1 ? pos + 1 : pos - 1;
+        const targetPos = Math.ceil(Math.min(pos, siblingPos) / 2);
+        const nextRound = round + 1;
+
+        const { data: sibling } = await supabase
+            .from('matches')
+            .select('id, winner_id, status, playoff_round, bracket_pos, week')
+            .eq('match_type', 'playoff')
+            .eq('playoff_round', round)
+            .eq('bracket_pos', siblingPos)
+            .limit(1);
+
+        if (sibling && sibling.length > 0 && sibling[0].status === 'completed' && sibling[0].winner_id) {
+            // Both siblings completed — pair winners into next round
+            const lowerPosWinner = pos < siblingPos ? winnerTeam : sibling[0].winner_id as number;
+            const upperPosWinner = pos < siblingPos ? sibling[0].winner_id as number : winnerTeam;
+
+            const { data: nextMatch } = await supabase
                 .from('matches')
                 .select('*')
                 .eq('match_type', 'playoff')
-                .eq('playoff_round', 2)
-                .eq('bracket_pos', pos)
+                .eq('playoff_round', nextRound)
+                .eq('bracket_pos', targetPos)
                 .limit(1);
-            if (r2Match && r2Match.length > 0) {
-                const nm = r2Match[0];
-                const updates: any = {};
-                if (!nm.team2_id) updates.team2_id = winnerTeam;       // BYE seed is team1, play-in winner is team2
-                else if (!nm.team1_id) updates.team1_id = winnerTeam;  // fallback
-                if (updates.team1_id || updates.team2_id) {
-                    await updateMatch(nm.id, updates);
-                }
+
+            if (nextMatch && nextMatch.length > 0) {
+                const nm = nextMatch[0];
+                const upd: any = {};
+                if (!nm.team1_id) upd.team1_id = lowerPosWinner;
+                if (!nm.team2_id) upd.team2_id = upperPosWinner;
+                if (upd.team1_id || upd.team2_id) await updateMatch(nm.id, upd);
             } else {
-                // Create R2 match if it doesn't exist (winner waits for BYE seed)
                 await createMatch({
-                    week: PLAYOFF_ROUND_WEEKS[2] || 8,
+                    week: PLAYOFF_ROUND_WEEKS[nextRound] || (nextRound + 6),
                     group_name: 'Playoffs',
-                    team1_id: null,
-                    team2_id: winnerTeam,
+                    team1_id: lowerPosWinner,
+                    team2_id: upperPosWinner,
                     status: 'scheduled',
                     format: 'BO3',
                     maps_played: 0,
                     match_type: 'playoff',
-                    playoff_round: 2,
-                    bracket_pos: pos,
-                    bracket_label: `R2 #${pos}`,
+                    playoff_round: nextRound,
+                    bracket_pos: targetPos,
+                    bracket_label: `R${nextRound} #${targetPos}`,
                     season_id: m.season_id // Explicitly preserve season
                 });
             }
-        } else {
-            // ── R2+ → next round: sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.)
-            const siblingPos = pos % 2 === 1 ? pos + 1 : pos - 1;
-            const targetPos = Math.ceil(Math.min(pos, siblingPos) / 2);
-            const nextRound = round + 1;
-
-            const { data: sibling } = await supabase
-                .from('matches')
-                .select('id, winner_id, status, playoff_round, bracket_pos, week')
-                .eq('match_type', 'playoff')
-                .eq('playoff_round', round)
-                .eq('bracket_pos', siblingPos)
-                .limit(1);
-
-            if (sibling && sibling.length > 0 && sibling[0].status === 'completed' && sibling[0].winner_id) {
-                // Both siblings completed — pair winners into next round
-                const lowerPosWinner = pos < siblingPos ? winnerTeam : sibling[0].winner_id as number;
-                const upperPosWinner = pos < siblingPos ? sibling[0].winner_id as number : winnerTeam;
-
-                const { data: nextMatch } = await supabase
-                    .from('matches')
-                    .select('*')
-                    .eq('match_type', 'playoff')
-                    .eq('playoff_round', nextRound)
-                    .eq('bracket_pos', targetPos)
-                    .limit(1);
-
-                if (nextMatch && nextMatch.length > 0) {
-                    const nm = nextMatch[0];
-                    const upd: any = {};
-                    if (!nm.team1_id) upd.team1_id = lowerPosWinner;
-                    if (!nm.team2_id) upd.team2_id = upperPosWinner;
-                    if (upd.team1_id || upd.team2_id) await updateMatch(nm.id, upd);
-                } else {
-                    await createMatch({
-                        week: PLAYOFF_ROUND_WEEKS[nextRound] || (nextRound + 6),
-                        group_name: 'Playoffs',
-                        team1_id: lowerPosWinner,
-                        team2_id: upperPosWinner,
-                        status: 'scheduled',
-                        format: 'BO3',
-                        maps_played: 0,
-                        match_type: 'playoff',
-                        playoff_round: nextRound,
-                        bracket_pos: targetPos,
-                        bracket_label: `R${nextRound} #${targetPos}`,
-                        season_id: m.season_id // Explicitly preserve season
-                    });
-                }
-            }
-            // else: sibling not yet completed, nothing to do — wait for the other match
         }
+        // else: sibling not yet completed, nothing to do — wait for the other match
     } catch (e) {
         console.error('Error advancing bracket:', e);
     }
@@ -3110,40 +3084,24 @@ export async function computeBracketAdvancements(seasonId?: string): Promise<Bra
             byRoundPos.set(key, m);
         });
 
-        // 1) R1 → R2: play-in winner fills the empty slot at same bracket_pos in R2
-        (matches || []).filter((m: any) => m.status === 'completed' && (m.playoff_round || 0) === 1).forEach((m: any) => {
-            const winId = deriveWinner(m);
-            if (!winId) return;
-            const pos = m.bracket_pos || 0;
-            if (!pos) return;
-            const nextKey = `2:${pos}`;
-            const nm = byRoundPos.get(nextKey);
-            const winnerName = teamMap.get(winId) || `Team ${winId}`;
-            if (nm) {
-                const t1 = nm.team1_id;
-                const t2 = nm.team2_id;
-                // Only fill if exactly one slot is empty (BYE seed occupies one side)
-                if ((t1 && !t2) || (!t1 && t2)) {
-                    actions.push({
-                        kind: 'fill',
-                        target_round: 2,
-                        bracket_pos: pos,
-                        match_id: nm.id,
-                        team1_id: t1 ? t1 : winId,
-                        team2_id: t1 ? winId : t2,
-                        title: `R2 #${pos}: ${teamMap.get(t1) || 'TBD'} vs ${teamMap.get(t2) || 'TBD'}`,
-                        reason: `Fill BYE slot with play-in winner ${winnerName}`,
-                        season_id: activeSeason
-                    });
-                }
-            }
-        });
-
-        // 2) R2+ → next round: sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.)
+        // Sibling pairing for EVERY round, including round 1 (pos 1&2 → 1,
+        // 3&4 → 2, etc.). S26: 4 groups x top-4 qualify = 16 teams exactly,
+        // straight into Round of 16 (round 1) with no play-in and no byes —
+        // this used to have a separate "Rule 1" here that only fired for
+        // round 1, filled a next-round match ONLY when exactly one of its two
+        // slots was already empty (a BYE seed occupying the other side), and
+        // skipped round 1 entirely in the sibling-pairing rule below. With no
+        // byes left anywhere in the bracket, that rule would never fire again
+        // (round 1 matches now start with the slot the "BYE" branch expects
+        // to be empty already filled by staff), silently breaking round
+        // 1 -> round 2 advancement the moment real playoffs started. See
+        // tools/season-transition/cleanup_playoff_duplicates.py in the
+        // FLV-Registration repo for the incident the old play-in/bye pattern
+        // was eventually implicated in.
         const perRound = new Map<number, any[]>();
         (matches || []).forEach(m => {
             const r = m.playoff_round || 0;
-            if (r < 2) return; // skip R1
+            if (r < 1) return;
             const arr = perRound.get(r) || [];
             arr.push(m);
             perRound.set(r, arr);
@@ -3480,7 +3438,7 @@ async function getPlayoffProbability_uncached(iterations: number = 1000, seasonI
     const { currentStandings, remainingMatches } = await getSimulationData(activeSeason);
     if (remainingMatches.length === 0) return [];
 
-    const results = new Map<number, number>(); // teamId -> count of times made top 6 in group
+    const results = new Map<number, number>(); // teamId -> count of times made top 4 in group
     const teamMetadata = new Map<number, { name: string, group: string }>();
     currentStandings.forEach(s => teamMetadata.set(s.id, { name: s.name, group: s.group_name }));
 
@@ -3522,7 +3480,7 @@ async function getPlayoffProbability_uncached(iterations: number = 1000, seasonI
             }
         });
 
-        // Group and check top 6
+        // Group and check top 4 (S26: top 4 per group qualify for Round of 16)
         const grouped = new Map<string, StandingsRow[]>();
         simStandings.forEach(s => {
             const arr = grouped.get(s.group_name) || [];
@@ -3532,7 +3490,7 @@ async function getPlayoffProbability_uncached(iterations: number = 1000, seasonI
 
         grouped.forEach(teams => {
             teams.sort((a, b) => b.Points - a.Points || b.PD - a.PD);
-            teams.slice(0, 6).forEach(t => {
+            teams.slice(0, 4).forEach(t => {
                 results.set(t.id, (results.get(t.id) || 0) + 1);
             });
         });
@@ -3595,9 +3553,11 @@ async function getTournamentWinProbability_uncached(iterations: number = 1000, s
             const simMatches = new Map<string, any>();
             matches.forEach(m => simMatches.set(`${m.playoff_round}:${m.bracket_pos}`, { ...m }));
 
-            // Simulate through rounds 1 to 5
-            for (let r = 1; r <= 5; r++) {
-                const roundSlots = r === 1 ? 8 : r === 2 ? 8 : r === 3 ? 4 : r === 4 ? 2 : 1;
+            // S26: 16 teams, no play-ins/byes -- straight Round of 16 through
+            // Final (4 rounds), sibling pairing (pos 1&2 -> pos 1 next round,
+            // 3&4 -> pos 2, etc) all the way through.
+            for (let r = 1; r <= 4; r++) {
+                const roundSlots = r === 1 ? 8 : r === 2 ? 4 : r === 3 ? 2 : 1;
                 for (let p = 1; p <= roundSlots; p++) {
                     const key = `${r}:${p}`;
                     const match = simMatches.get(key);
@@ -3618,16 +3578,10 @@ async function getTournamentWinProbability_uncached(iterations: number = 1000, s
                     }
 
                     if (winner) {
-                        if (r === 5) {
+                        if (r === 4) {
                             teamStats[winner.id].wins += 1;
-                        } else if (r === 1) {
-                            // R1 -> R2 (same bracket_pos)
-                            const targetKey = `2:${p}`;
-                            const target = simMatches.get(targetKey) || { team1: { id: 0 }, team2: { id: 0 } };
-                            target.team2 = winner;
-                            simMatches.set(targetKey, target);
                         } else {
-                            // R2+ -> Sibling pairing
+                            // Sibling pairing
                             const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
                             const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
                             const targetKey = `${r + 1}:${targetPos}`;

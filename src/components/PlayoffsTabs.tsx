@@ -11,12 +11,14 @@ interface Props {
 export default function PlayoffsTabs({ matches }: Props) {
     const [activeTab, setActiveTab] = useState<'bracket' | 'simulator'>('bracket');
 
+    // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into Round
+    // of 16 -- no play-in round (that only existed for the old 6-per-group /
+    // 24-team format, where the top 2 got a bye and the other 4 played in).
     const rounds = [
-        { id: 1, name: "Play-ins", slots: 8 },
-        { id: 2, name: "Round of 16", slots: 8 },
-        { id: 3, name: "Quarter-finals", slots: 4 },
-        { id: 4, name: "Semi-finals", slots: 2 },
-        { id: 5, name: "Grand Final", slots: 1 }
+        { id: 1, name: "Round of 16", slots: 8 },
+        { id: 2, name: "Quarter-finals", slots: 4 },
+        { id: 3, name: "Semi-finals", slots: 2 },
+        { id: 4, name: "Grand Final", slots: 1 }
     ];
 
     const getMatchAt = (roundId: number, pos: number) => {
@@ -93,8 +95,7 @@ export default function PlayoffsTabs({ matches }: Props) {
                 </div>
 
                 <div className="flex justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-foreground/30 border-y border-white/5 py-4 w-full max-w-4xl">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-val-blue inline-block" /> BYE (Top 2 per group)</span>
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-val-red inline-block" /> Play-ins (#3-#6)</span>
+                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-val-red inline-block" /> Top 4 per group qualify</span>
                     {activeTab === 'simulator' && (
                         <span className="flex items-center gap-2 text-val-yellow ml-4 italic">Pick a team to simulate their victory!</span>
                     )}
@@ -113,17 +114,11 @@ export default function PlayoffsTabs({ matches }: Props) {
                                 {Array.from({ length: round.slots }).map((_, idx) => {
                                     const pos = idx + 1;
                                     const match = getMatchAt(round.id, pos);
-                                    const isBye = round.id === 2 && match && (match.team1.id && !match.team2.id);
 
                                     return (
                                         <div key={`${round.id}-${pos}`} className={`relative ${match ? 'opacity-100' : 'opacity-30'}`}>
-                                            {isBye && (
-                                                <div className="absolute -top-3 right-0 text-[8px] font-black uppercase tracking-widest text-val-blue/60 bg-val-blue/10 px-1.5 py-0.5 rounded-sm">
-                                                    BYE
-                                                </div>
-                                            )}
                                             <MatchCard match={match} compact={round.id === 1} />
-                                            {round.id < 5 && (
+                                            {round.id < rounds.length && (
                                                 <div className="absolute -right-1 top-1/2 w-1 h-px bg-white/10" />
                                             )}
                                         </div>
