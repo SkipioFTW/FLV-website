@@ -8,9 +8,10 @@ import { MetaAnalytics, StandingsRow } from '@/lib/data';
 interface Props {
     groupedStandings: Map<string, StandingsRow[]>;
     metaData: MetaAnalytics;
+    seasonId: string;
 }
 
-export default function StandingsTabs({ groupedStandings, metaData }: Props) {
+export default function StandingsTabs({ groupedStandings, metaData, seasonId }: Props) {
     const [activeTab, setActiveTab] = useState<'standings' | 'meta'>('standings');
 
     return (
@@ -41,7 +42,7 @@ export default function StandingsTabs({ groupedStandings, metaData }: Props) {
             </div>
 
             {activeTab === 'standings' ? (
-                <StandingsView groupedStandings={groupedStandings} />
+                <StandingsView groupedStandings={groupedStandings} seasonId={seasonId} />
             ) : (
                 <MetaAnalyticsComponent data={metaData} />
             )}

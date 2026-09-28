@@ -26,7 +26,7 @@ export default async function StandingsPage(props: {
                     </p>
                 </div>
 
-                <StandingsTabs groupedStandings={groupedStandings} metaData={metaData} />
+                <StandingsTabs groupedStandings={groupedStandings} metaData={metaData} seasonId={seasonId} />
             </main>
         </div>
     );

@@ -412,14 +412,27 @@ export function parseTrackerJson(
     }
 }
 
-// S26: 4 rounds (Round of 16, Quarterfinals, Semifinals, Grand Final) — no
-// play-in round, since 4 groups x top-4 qualify = 16 teams exactly.
-export const PLAYOFF_ROUND_WEEKS: Record<number, number> = {
-    1: 7,
-    2: 8,
-    3: 9,
-    4: 10
-};
+// S26 dropped the old 6-per-group / 24-team play-in format for a clean
+// 4-groups x top-4 = 16-team bracket (Round of 16 straight through to the
+// Final, no play-ins). Seasons before S26 really did have play-ins, so any
+// bracket-shape logic (round counts, week numbers, advancement pairing) has
+// to branch on which season it's actually for -- a blind rewrite here would
+// just silently corrupt the display/advancement of S22-S25 history instead
+// of fixing only S26 onward. See tools/season-transition in the
+// FLV-Registration repo for the incident that made this distinction matter.
+export function isPreS26Format(seasonId: string): boolean {
+    const n = parseInt(String(seasonId).replace(/\D/g, ''), 10);
+    return Number.isFinite(n) && n < 26;
+}
+
+// S26 (4 rounds: Round of 16, Quarterfinals, Semifinals, Grand Final) vs
+// pre-S26 (5 rounds: Play-ins, Round of 16, Quarterfinals, Semifinals, Grand
+// Final) -- see isPreS26Format above.
+export function getPlayoffRoundWeeks(seasonId: string): Record<number, number> {
+    return isPreS26Format(seasonId)
+        ? { 1: 7, 2: 8, 3: 9, 4: 10, 5: 11 }
+        : { 1: 7, 2: 8, 3: 9, 4: 10 };
+}
 
 export function parseHenrikDevJson(
     js: any,
@@ -3022,7 +3035,7 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
                 if (upd.team1_id || upd.team2_id) await updateMatch(nm.id, upd);
             } else {
                 await createMatch({
-                    week: PLAYOFF_ROUND_WEEKS[nextRound] || (nextRound + 6),
+                    week: getPlayoffRoundWeeks(m.season_id || '')[nextRound] || (nextRound + 6),
                     group_name: 'Playoffs',
                     team1_id: lowerPosWinner,
                     team2_id: upperPosWinner,
@@ -3038,6 +3051,13 @@ export async function advanceBracketOnMatchUpdate(matchId: number): Promise<void
             }
         }
         // else: sibling not yet completed, nothing to do — wait for the other match
+        //
+        // NOTE: this function is confirmed dead code (never called anywhere
+        // in the app) as of the S26 bracket resize. It currently assumes
+        // uniform sibling pairing for every round, which is only correct for
+        // S26+. If this is ever wired back up, it needs the same
+        // isPreS26Format(m.season_id) branch computeBracketAdvancements below
+        // uses to restore the old round-1-play-in-to-bye pairing for S22-S25.
     } catch (e) {
         console.error('Error advancing bracket:', e);
     }
@@ -3090,24 +3110,54 @@ export async function computeBracketAdvancements(seasonId?: string): Promise<Bra
             byRoundPos.set(key, m);
         });
 
-        // Sibling pairing for EVERY round, including round 1 (pos 1&2 → 1,
-        // 3&4 → 2, etc.). S26: 4 groups x top-4 qualify = 16 teams exactly,
-        // straight into Round of 16 (round 1) with no play-in and no byes —
-        // this used to have a separate "Rule 1" here that only fired for
-        // round 1, filled a next-round match ONLY when exactly one of its two
-        // slots was already empty (a BYE seed occupying the other side), and
-        // skipped round 1 entirely in the sibling-pairing rule below. With no
-        // byes left anywhere in the bracket, that rule would never fire again
-        // (round 1 matches now start with the slot the "BYE" branch expects
-        // to be empty already filled by staff), silently breaking round
-        // 1 -> round 2 advancement the moment real playoffs started. See
+        const oldFormat = isPreS26Format(activeSeason);
+
+        if (oldFormat) {
+            // Pre-S26 only: Round 1 = Play-ins (8 matches). Winners fill the
+            // empty BYE slot at the SAME bracket_pos in Round 2 (only when
+            // exactly one of that match's two slots is already empty — the
+            // other side is the bye seed).
+            (matches || []).filter((m: any) => m.status === 'completed' && (m.playoff_round || 0) === 1).forEach((m: any) => {
+                const winId = deriveWinner(m);
+                if (!winId) return;
+                const pos = m.bracket_pos || 0;
+                if (!pos) return;
+                const nextKey = `2:${pos}`;
+                const nm = byRoundPos.get(nextKey);
+                const winnerName = teamMap.get(winId) || `Team ${winId}`;
+                if (nm) {
+                    const t1 = nm.team1_id;
+                    const t2 = nm.team2_id;
+                    if ((t1 && !t2) || (!t1 && t2)) {
+                        actions.push({
+                            kind: 'fill',
+                            target_round: 2,
+                            bracket_pos: pos,
+                            match_id: nm.id,
+                            team1_id: t1 ? t1 : winId,
+                            team2_id: t1 ? winId : t2,
+                            title: `R2 #${pos}: ${teamMap.get(t1) || 'TBD'} vs ${teamMap.get(t2) || 'TBD'}`,
+                            reason: `Fill BYE slot with play-in winner ${winnerName}`,
+                            season_id: activeSeason
+                        });
+                    }
+                }
+            });
+        }
+
+        // Sibling pairing (pos 1&2 → 1, 3&4 → 2, etc.) for every round from
+        // Round 2 onward on a pre-S26 (play-in) bracket -- Round 1 there was
+        // handled above instead -- or for EVERY round including Round 1 on
+        // an S26+ (no play-in, no byes) bracket, where Round 1 already IS a
+        // real bracket round rather than a play-in feeding byes. See
         // tools/season-transition/cleanup_playoff_duplicates.py in the
-        // FLV-Registration repo for the incident the old play-in/bye pattern
-        // was eventually implicated in.
+        // FLV-Registration repo for the incident that made getting this
+        // distinction right (instead of leaving both formats on one path)
+        // matter.
         const perRound = new Map<number, any[]>();
         (matches || []).forEach(m => {
             const r = m.playoff_round || 0;
-            if (r < 1) return;
+            if (r < (oldFormat ? 2 : 1)) return;
             const arr = perRound.get(r) || [];
             arr.push(m);
             perRound.set(r, arr);
@@ -3190,7 +3240,7 @@ export async function applyBracketAdvancements(actions: BracketAction[]): Promis
                     await updateMatch(existing[0].id, payload);
                 } else {
                     await createMatch({
-                        week: PLAYOFF_ROUND_WEEKS[act.target_round] || (act.target_round + 6),
+                        week: getPlayoffRoundWeeks(act.season_id || '')[act.target_round] || (act.target_round + 6),
                         group_name: 'Playoffs',
                         team1_id: act.team1_id ?? null,
                         team2_id: act.team2_id ?? null,

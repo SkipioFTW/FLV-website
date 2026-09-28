@@ -26,7 +26,7 @@ export default async function PlayoffsPage(props: {
                 </header>
 
                 {matches.length > 0 ? (
-                    <PlayoffsTabs matches={matches} />
+                    <PlayoffsTabs matches={matches} seasonId={seasonId} />
                 ) : (
                     <div className="glass rounded-xl p-20 text-center border border-white/5 shadow-2xl max-w-4xl mx-auto">
                         <div className="w-20 h-20 bg-val-red/10 rounded-full flex items-center justify-center mx-auto mb-6">

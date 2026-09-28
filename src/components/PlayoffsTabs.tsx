@@ -3,18 +3,29 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import BracketSimulator from './BracketSimulator';
+import { isPreS26Format } from '@/lib/data';
 
 interface Props {
     matches: any[];
+    seasonId: string;
 }
 
-export default function PlayoffsTabs({ matches }: Props) {
+export default function PlayoffsTabs({ matches, seasonId }: Props) {
     const [activeTab, setActiveTab] = useState<'bracket' | 'simulator'>('bracket');
 
     // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into Round
     // of 16 -- no play-in round (that only existed for the old 6-per-group /
     // 24-team format, where the top 2 got a bye and the other 4 played in).
-    const rounds = [
+    // Seasons before S26 really did have that play-in round, so this has to
+    // branch on which season is actually being viewed here.
+    const oldFormat = isPreS26Format(seasonId);
+    const rounds = oldFormat ? [
+        { id: 1, name: "Play-ins", slots: 8 },
+        { id: 2, name: "Round of 16", slots: 8 },
+        { id: 3, name: "Quarter-finals", slots: 4 },
+        { id: 4, name: "Semi-finals", slots: 2 },
+        { id: 5, name: "Grand Final", slots: 1 }
+    ] : [
         { id: 1, name: "Round of 16", slots: 8 },
         { id: 2, name: "Quarter-finals", slots: 4 },
         { id: 3, name: "Semi-finals", slots: 2 },
@@ -95,7 +106,7 @@ export default function PlayoffsTabs({ matches }: Props) {
                 </div>
 
                 <div className="flex justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-foreground/30 border-y border-white/5 py-4 w-full max-w-4xl">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-val-red inline-block" /> Top 4 per group qualify</span>
+                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-val-red inline-block" /> {oldFormat ? 'Top 2 per group: BYE — 3rd-6th: Play-ins' : 'Top 4 per group qualify'}</span>
                     {activeTab === 'simulator' && (
                         <span className="flex items-center gap-2 text-val-yellow ml-4 italic">Pick a team to simulate their victory!</span>
                     )}
@@ -130,7 +141,7 @@ export default function PlayoffsTabs({ matches }: Props) {
                 </div>
             ) : (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <BracketSimulator initialMatches={matches} />
+                    <BracketSimulator initialMatches={matches} seasonId={seasonId} />
                 </div>
             )}
         </div>

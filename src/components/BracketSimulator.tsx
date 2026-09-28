@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
+import { isPreS26Format } from '@/lib/data';
 
 interface Team {
     id: number;
@@ -24,9 +25,10 @@ interface Match {
 
 interface Props {
     initialMatches: Match[];
+    seasonId: string;
 }
 
-export default function BracketSimulator({ initialMatches }: Props) {
+export default function BracketSimulator({ initialMatches, seasonId }: Props) {
     const [simulatedWinners, setSimulatedWinners] = useState<Record<string, number>>({}); // "round:pos" -> winnerId
     const [isSimulating, setIsSimulating] = useState(false);
 
@@ -63,7 +65,15 @@ export default function BracketSimulator({ initialMatches }: Props) {
     // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into Round
     // of 16 -- no play-in round (that only existed for the old 6-per-group /
     // 24-team format, where the top 2 got a bye and the other 4 played in).
-    const rounds = [
+    // Seasons before S26 really did have that play-in round.
+    const oldFormat = isPreS26Format(seasonId);
+    const rounds = oldFormat ? [
+        { id: 1, name: "Play-ins", slots: 8 },
+        { id: 2, name: "Round of 16", slots: 8 },
+        { id: 3, name: "Quarter-finals", slots: 4 },
+        { id: 4, name: "Semi-finals", slots: 2 },
+        { id: 5, name: "Grand Final", slots: 1 }
+    ] : [
         { id: 1, name: "Round of 16", slots: 8 },
         { id: 2, name: "Quarter-finals", slots: 4 },
         { id: 3, name: "Semi-finals", slots: 2 },
@@ -74,11 +84,11 @@ export default function BracketSimulator({ initialMatches }: Props) {
         const matches = new Map<string, Match>();
         initialMatches.forEach(m => matches.set(`${m.playoff_round}:${m.bracket_pos}`, { ...m }));
 
-        // Advance logic -- sibling pairing for every round, including round 1
-        // (pos 1&2 -> pos 1 next round, 3&4 -> pos 2, etc). No more "R1 -> R2
-        // same bracket_pos" special case: that assumed round 1 was a play-in
-        // feeding a bye slot at the SAME position in round 2, which doesn't
-        // exist in the 16-team no-bye format.
+        // Advance logic. S26+: sibling pairing for every round, including
+        // round 1 (pos 1&2 -> pos 1 next round, 3&4 -> pos 2, etc). Pre-S26:
+        // round 1 was a play-in feeding a bye slot at the SAME bracket_pos
+        // in round 2 (team2 slot specifically), then sibling pairing from
+        // round 2 onward -- same shape computeBracketAdvancements uses.
         for (let r = 1; r < rounds.length; r++) {
             for (let p = 1; p <= (rounds[r - 1]?.slots || 0); p++) {
                 const key = `${r}:${p}`;
@@ -90,6 +100,14 @@ export default function BracketSimulator({ initialMatches }: Props) {
 
                 const winnerTeam = getTeam(winnerId);
                 if (!winnerTeam || winnerTeam.id === 0) continue;
+
+                if (oldFormat && r === 1) {
+                    const targetKey = `2:${p}`;
+                    const targetMatch = matches.get(targetKey) || { id: 0, playoff_round: 2, bracket_pos: p, team1: { id: 0, name: 'TBD', logo: null }, team2: { id: 0, name: 'TBD', logo: null } };
+                    targetMatch.team2 = winnerTeam;
+                    matches.set(targetKey, targetMatch);
+                    continue;
+                }
 
                 const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
                 const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
@@ -104,7 +122,7 @@ export default function BracketSimulator({ initialMatches }: Props) {
         }
 
         return matches;
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- `rounds` is a stable-content literal and `getTeam` derives only from the already-tracked `teamsById`
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `rounds`/`oldFormat` are stable-content per render and `getTeam` derives only from the already-tracked `teamsById`
     }, [initialMatches, simulatedWinners, teamsById]);
 
     const handlePickWinner = (round: number, pos: number, teamId: number) => {
@@ -152,17 +170,28 @@ export default function BracketSimulator({ initialMatches }: Props) {
                     const winnerTeam = getTeam(winnerId);
 
                     if (winnerTeam && winnerTeam.id !== 0 && r < rounds.length) {
-                        const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
-                        const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
-                        const targetKey = `${r + 1}:${targetPos}`;
-                        const target = currentSimMatches.get(targetKey) || {
-                            id: 0, playoff_round: r + 1, bracket_pos: targetPos,
-                            team1: { id: 0, name: 'TBD', logo: null },
-                            team2: { id: 0, name: 'TBD', logo: null }
-                        };
-                        if (p < siblingPos) target.team1 = winnerTeam;
-                        else target.team2 = winnerTeam;
-                        currentSimMatches.set(targetKey, target);
+                        if (oldFormat && r === 1) {
+                            const targetKey = `2:${p}`;
+                            const target = currentSimMatches.get(targetKey) || {
+                                id: 0, playoff_round: 2, bracket_pos: p,
+                                team1: { id: 0, name: 'TBD', logo: null },
+                                team2: { id: 0, name: 'TBD', logo: null }
+                            };
+                            target.team2 = winnerTeam;
+                            currentSimMatches.set(targetKey, target);
+                        } else {
+                            const siblingPos = p % 2 === 1 ? p + 1 : p - 1;
+                            const targetPos = Math.ceil(Math.min(p, siblingPos) / 2);
+                            const targetKey = `${r + 1}:${targetPos}`;
+                            const target = currentSimMatches.get(targetKey) || {
+                                id: 0, playoff_round: r + 1, bracket_pos: targetPos,
+                                team1: { id: 0, name: 'TBD', logo: null },
+                                team2: { id: 0, name: 'TBD', logo: null }
+                            };
+                            if (p < siblingPos) target.team1 = winnerTeam;
+                            else target.team2 = winnerTeam;
+                            currentSimMatches.set(targetKey, target);
+                        }
                     }
                 }
             }

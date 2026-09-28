@@ -15,6 +15,7 @@ import {
     parseHenrikDevJson,
     getDashboardStats,
     getSeasons,
+    isPreS26Format,
     type GlobalStats
 } from "@/lib/data";
 import { clearMatchDetails } from "@/lib/data";
@@ -867,7 +868,19 @@ function PlayoffBracketEditor({
     // S26: 4 groups x top-4 qualify = 16 teams exactly, straight into Round of
     // 16 -- no play-in round (that only existed for the old 6-per-group /
     // 24-team format, where the top 2 got a bye and the other 4 played in).
-    const rounds = [
+    // Seasons before S26 really did have that play-in round, so the grid
+    // below has to branch on which season this editor is currently pointed
+    // at (selectedSeason can be a historical season on purpose -- see
+    // confirmSeasonWrite above) or it'll mislabel/mis-column existing
+    // historical bracket data, not just new writes.
+    const oldFormat = isPreS26Format(selectedSeason);
+    const rounds = oldFormat ? [
+        { id: 1, name: "Play-ins", slots: 8 },
+        { id: 2, name: "Round of 16", slots: 8 },
+        { id: 3, name: "Quarter-finals", slots: 4 },
+        { id: 4, name: "Semi-finals", slots: 2 },
+        { id: 5, name: "Grand Final", slots: 1 }
+    ] : [
         { id: 1, name: "Round of 16", slots: 8 },
         { id: 2, name: "Quarter-finals", slots: 4 },
         { id: 3, name: "Semi-finals", slots: 2 },
@@ -979,7 +992,7 @@ function PlayoffBracketEditor({
                     </button>
                 </div>
             </div>
-            <div className="min-w-[1000px] grid grid-cols-4 gap-6">
+            <div className={`min-w-[1000px] grid ${oldFormat ? 'grid-cols-5' : 'grid-cols-4'} gap-6`}>
                 {rounds.map((round) => (
                     <div key={round.id} className="space-y-4">
                         <div className="text-center font-display text-sm font-black uppercase tracking-widest text-foreground/60">

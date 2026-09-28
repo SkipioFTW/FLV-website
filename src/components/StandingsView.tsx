@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
+import { isPreS26Format } from '@/lib/data';
 
 interface TeamStanding {
     id: number;
@@ -19,11 +20,13 @@ interface TeamStanding {
 
 interface Props {
     groupedStandings: Map<string, TeamStanding[]>;
+    seasonId: string;
 }
 
 const TOTAL_WEEKS = 6;
 
-export default function StandingsView({ groupedStandings }: Props) {
+export default function StandingsView({ groupedStandings, seasonId }: Props) {
+    const oldFormat = isPreS26Format(seasonId);
     const groups = Array.from(groupedStandings.entries());
     const [selectedGroup, setSelectedGroup] = useState<string>(groups[0]?.[0] || '');
 
@@ -51,13 +54,29 @@ export default function StandingsView({ groupedStandings }: Props) {
 
     // S26: top 4 per group qualify directly for the Round of 16 -- no more
     // BYE (top 2) vs Round of 24 play-in (3rd-6th) split, since that only
-    // existed for the old 6-per-group / 24-team format.
+    // existed for the old 6-per-group / 24-team format. Seasons before S26
+    // really did have that split, so this branches on oldFormat above.
     const getQualificationStatus = (rank: number, team: TeamStanding) => {
         const matchesLeft = TOTAL_WEEKS - team.Played;
         const maxPossiblePoints = team.Points + (matchesLeft * 15); // Best case: win all remaining
 
         // Get the current standings for this group
         const currentGroupStandings = groupedStandings.get(selectedGroup) || [];
+
+        if (oldFormat) {
+            // Check if mathematically eliminated (can't reach 6th place)
+            if (rank > 6) {
+                const sixthPlacePoints = currentGroupStandings[5]?.Points || 0;
+                if (maxPossiblePoints < sixthPlacePoints) {
+                    return 'eliminated';
+                }
+            }
+            // Top 2: BYE to playoffs
+            if (rank <= 2) return 'bye';
+            // 3-6: Round of 24 play-in
+            if (rank >= 3 && rank <= 6) return 'r24';
+            return 'none';
+        }
 
         // Check if mathematically eliminated (can't reach 4th place)
         if (rank > 4) {
@@ -77,6 +96,10 @@ export default function StandingsView({ groupedStandings }: Props) {
         switch (status) {
             case 'qualified':
                 return 'border-l-4 border-green-500 bg-green-500/5';
+            case 'bye':
+                return 'border-l-4 border-green-500 bg-green-500/5';
+            case 'r24':
+                return 'border-l-4 border-val-blue bg-val-blue/5';
             case 'eliminated':
                 return 'border-l-4 border-val-red bg-val-red/5';
             default:
@@ -106,10 +129,23 @@ export default function StandingsView({ groupedStandings }: Props) {
 
             {/* Legend */}
             <div className="mb-6 flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-green-500 rounded"></div>
-                    <span className="text-foreground/60">Top 4: Qualified for Round of 16</span>
-                </div>
+                {oldFormat ? (
+                    <>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-green-500 rounded"></div>
+                            <span className="text-foreground/60">Top 2: BYE Round</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-val-blue rounded"></div>
+                            <span className="text-foreground/60">3rd-6th: Round of 24</span>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-green-500 rounded"></div>
+                        <span className="text-foreground/60">Top 4: Qualified for Round of 16</span>
+                    </div>
+                )}
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-val-red rounded"></div>
                     <span className="text-foreground/60">Mathematically Eliminated</span>

@@ -13,6 +13,7 @@
  */
 
 import { executeAIQuery } from './db';
+import { isPreS26Format } from '../data';
 
 // ─── Database Schema Context ──────────────────────────────────────────────────
 // This is given to the AI so it knows what tables and columns exist.
@@ -22,11 +23,9 @@ import { executeAIQuery } from './db';
 // Final, no play-ins). Seasons before S26 really did have play-ins, so the
 // AI's own knowledge of "what round is what" has to branch on which season
 // it's actually being asked about — a blind rewrite here would just make it
-// confidently wrong about S23-S25 history instead of S26 onward.
-function isPreS26Format(seasonId: string): boolean {
-    const n = parseInt(String(seasonId).replace(/\D/g, ''), 10);
-    return Number.isFinite(n) && n < 26;
-}
+// confidently wrong about S23-S25 history instead of S26 onward. See
+// isPreS26Format in ../data (shared with the rest of the site's bracket
+// display/advancement logic, not just this AI prompt).
 
 const getDbSchema = (seasonId: string) => `
 DATABASE SCHEMA (Valorant FLV League):
