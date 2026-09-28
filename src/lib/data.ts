@@ -921,10 +921,10 @@ async function getStandings_uncached(seasonId?: string): Promise<Map<string, Sta
 
         // Exclude FAT1 and FAT2
         const filteredTeams = teamsToProcess.filter(
-            (t) => !['FAT1', 'FAT2'].includes(t.name)
+            (t) => !['FAT1', 'FAT2', 'BYE'].includes(t.name)
         );
         const excludeIds = teamsToProcess
-            .filter((t) => ['FAT1', 'FAT2'].includes(t.name))
+            .filter((t) => ['FAT1', 'FAT2', 'BYE'].includes(t.name))
             .map((t) => t.id);
 
         // 2. Fetch completed regular matches

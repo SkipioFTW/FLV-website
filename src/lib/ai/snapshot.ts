@@ -70,7 +70,7 @@ export async function generateLeagueSnapshot(seasonId?: string): Promise<LeagueS
         (teamHist as { team_id: number; group_name: string }[]).map((h) => [h.team_id, h.group_name])
     );
 
-    const excludeNames = new Set(['FAT1', 'FAT2']);
+    const excludeNames = new Set(['FAT1', 'FAT2', 'BYE']);
     const excludeIds = new Set(teams.filter((t: any) => excludeNames.has(t.name)).map((t: any) => t.id));
     const activeTeams = teams.filter((t: any) => !excludeNames.has(t.name));
 

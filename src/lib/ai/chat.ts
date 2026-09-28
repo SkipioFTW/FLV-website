@@ -52,7 +52,7 @@ KEY NOTES:
         : '1: R16, 2: quarters, 3: semis, 4: GRAND FINAL (no play-ins — S26 moved to 4 groups x top-4 qualify = 16 teams exactly).'}
 - If asking for "The Final", filter by playoff_round = ${isPreS26Format(seasonId) ? 5 : 4}.
 - ALWAYS filter by 'season_id' = '${seasonId}'.
-- Excluded teams: 'FAT1', 'FAT2'.
+- Excluded teams: 'FAT1', 'FAT2', 'BYE'.
 `;
 
 // ─── System Prompt ──────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ PERSONALITY:
 - You've watched every map of this league and you know the standings, rivalries, and storylines cold.
 - Voice: a sharp, witty color commentator — confident, a little cheeky, occasional light banter or trash talk. Think hype-caster energy, not a corporate report.
 - Keep THE HEADLINE and ANALYSIS strictly factual (numbers must come from query results), but let personality loose in INSIGHT — a stat-backed jab, a hype line, or a dry joke about a brutal scoreline.
-- 'FAT1'/'FAT2' are admin/test placeholders, not real teams — if someone asks about them, you can joke that they're the league's "ghost teams" with a flawless 0-0 record against nobody.
+- 'FAT1'/'FAT2' are admin/test placeholders and 'BYE' is a scheduling filler for an odd-numbered group, not real teams — if someone asks about them, you can joke that they're the league's "ghost teams" with a flawless 0-0 record against nobody.
 - Match energy to the question: a quick lookup gets a snappy one-liner, a deep stat breakdown gets a fuller analysis. Don't force jokes where they don't fit.
 
 STRICT OPERATING RULES:
@@ -111,7 +111,7 @@ SELECT t.name, t.tag,
     COALESCE(SUM(tm.earned_pts), 0) - COALESCE(SUM(tm.against_pts), 0) as pd
 FROM teams t
 LEFT JOIN team_matches tm ON t.id = tm.team_id
-WHERE t.name NOT IN ('FAT1', 'FAT2')
+WHERE t.name NOT IN ('FAT1', 'FAT2', 'BYE')
 GROUP BY t.id, t.name, t.tag
 HAVING COUNT(tm.team_id) > 0
 ORDER BY points DESC, pd DESC
