@@ -31,15 +31,14 @@ export interface LeagueSnapshot {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-async function fetchAll(table: string, columns: string): Promise<any[]> {
+async function fetchAll(table: string, columns: string, eqFilter?: [string, string]): Promise<any[]> {
     const PAGE = 1000;
     let all: any[] = [];
     let from = 0;
     while (true) {
-        const { data, error } = await supabase
-            .from(table)
-            .select(columns)
-            .range(from, from + PAGE - 1);
+        let query = supabase.from(table).select(columns);
+        if (eqFilter) query = query.eq(eqFilter[0], eqFilter[1]);
+        const { data, error } = await query.range(from, from + PAGE - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;
         all = all.concat(data);
@@ -52,14 +51,24 @@ async function fetchAll(table: string, columns: string): Promise<any[]> {
 // ─── Main Generator ──────────────────────────────────────────────────
 
 export async function generateLeagueSnapshot(seasonId?: string): Promise<LeagueSnapshot> {
-    const [teams, players, matches, matchMaps, statsRaw, roundsRaw] = await Promise.all([
+    const [teams, players, matches, matchMaps, statsRaw, roundsRaw, teamHist] = await Promise.all([
         fetchAll('teams', 'id,name,tag,group_name'),
         fetchAll('players', 'id,name,riot_id,default_team_id'),
         fetchAll('matches', 'id,week,team1_id,team2_id,winner_id,status,match_type,format,score_t1,score_t2,season_id'),
         fetchAll('match_maps', 'match_id,map_index,map_name,team1_rounds,team2_rounds,winner_id'),
         fetchAll('match_stats_map', 'player_id,team_id,match_id,map_index,agent,acs,kills,deaths,assists,adr,kast,hs_pct,fk,fd,clutches'),
         fetchAll('match_rounds', 'match_id,map_index,round_number,winning_team_id'),
+        seasonId ? fetchAll('team_history', 'team_id,group_name', ['season_id', seasonId]) : Promise.resolve([]),
     ]);
+
+    // teams.group_name is a legacy all-time field from before team_history
+    // existed (one value per team ever, not per season) -- it's blank for any
+    // team created after team_history took over as the season-scoped source
+    // of truth, so prefer team_history's group_name for the requested season
+    // and only fall back to the legacy column when there's no history row.
+    const seasonGroupByTeam = new Map<number, string>(
+        (teamHist as { team_id: number; group_name: string }[]).map((h) => [h.team_id, h.group_name])
+    );
 
     const excludeNames = new Set(['FAT1', 'FAT2']);
     const excludeIds = new Set(teams.filter((t: any) => excludeNames.has(t.name)).map((t: any) => t.id));
@@ -123,7 +132,7 @@ export async function generateLeagueSnapshot(seasonId?: string): Promise<LeagueS
 
     const groupMap = new Map<string, any[]>();
     activeTeams.forEach((t: any) => {
-        const g = t.group_name || 'U';
+        const g = seasonGroupByTeam.get(t.id) || t.group_name || 'U';
         const arr = groupMap.get(g) || [];
         const s = standingsMap.get(t.id)!;
         arr.push({ n: t.name, g: t.tag, w: s.w, l: s.l, p: s.p, pa: s.pa, pd: s.p - s.pa });

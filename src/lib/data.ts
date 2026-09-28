@@ -1823,11 +1823,15 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
 
         if (teamError || !team) throw teamError || new Error('Team not found');
 
-        // 1.5 Verify team participation in the requested season
+        // 1.5 Verify team participation in the requested season, and resolve
+        // this season's group -- team.group_name is a legacy all-time field
+        // from before team_history existed, blank for any team created since,
+        // so team_history's group_name is the real source for a given season.
+        let resolvedGroup = team.group_name || null;
         if (!isAllTime) {
             const { data: history } = await supabase
                 .from('team_history')
-                .select('id')
+                .select('id, group_name')
                 .eq('team_id', teamId)
                 .eq('season_id', activeSeason)
                 .single();
@@ -1835,6 +1839,8 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             if (!history) {
                 // If they didn't participate this season, we still return the team object but with no matches
                 // UI will handle "No Stats for Season X"
+            } else {
+                resolvedGroup = history.group_name || resolvedGroup;
             }
         }
 
@@ -1863,7 +1869,7 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
                 id: team.id,
                 name: team.name,
                 tag: team.tag,
-                group: team.group_name || 'N/A',
+                group: resolvedGroup || 'N/A',
                 progression: [],
                 playerStats: [],
                 maps: [],
@@ -2105,7 +2111,7 @@ export async function getTeamPerformance(teamId: number, matchType?: 'regular' |
             id: team.id,
             name: team.name,
             tag: team.tag,
-            group: team.group_name || 'N/A',
+            group: resolvedGroup || 'N/A',
             progression,
             playerStats,
             maps,
