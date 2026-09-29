@@ -1939,7 +1939,7 @@ function PlayersAdmin({ selectedSeason }: { selectedSeason: string }) {
 
     const filtered = players.filter(p => {
         const s = filter.toLowerCase();
-        return !s || p.name.toLowerCase().includes(s) || (p.riot_id || "").toLowerCase().includes(s);
+        return !s || (p.name || "").toLowerCase().includes(s) || (p.riot_id || "").toLowerCase().includes(s);
     });
 
     return (
