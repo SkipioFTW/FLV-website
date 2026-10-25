@@ -18,7 +18,11 @@ interface Props {
 export default function PlayerSearch({ players, onSelect, currentId }: Props) {
     const [query, setQuery] = useState('');
     const [isOpen, setIsOpen] = useState(false);
+    const [activeIndex, setActiveIndex] = useState(-1);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    const [prevQuery, setPrevQuery] = useState(query);
+    if (query !== prevQuery) { setPrevQuery(query); setActiveIndex(-1); }
 
     const filteredPlayers = query.trim() === ''
         ? players.slice(0, 10)
@@ -39,6 +43,14 @@ export default function PlayerSearch({ players, onSelect, currentId }: Props) {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!isOpen) { if (e.key === 'ArrowDown') setIsOpen(true); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex(p => Math.min(p + 1, filteredPlayers.length - 1)); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex(p => Math.max(p - 1, 0)); }
+        if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); onSelect(filteredPlayers[activeIndex].id); setQuery(''); setIsOpen(false); }
+        if (e.key === 'Escape') setIsOpen(false);
+    };
+
     return (
         <div className="relative w-full max-w-md" ref={containerRef}>
             <div
@@ -50,11 +62,11 @@ export default function PlayerSearch({ players, onSelect, currentId }: Props) {
                         type="text"
                         placeholder="Search Player Name or Riot ID..."
                         value={query || (isOpen ? '' : (currentPlayer?.name || ''))}
-                        onChange={(e) => {
-                            setQuery(e.target.value);
-                            setIsOpen(true);
-                        }}
+                        onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
                         onFocus={() => setIsOpen(true)}
+                        onKeyDown={handleKeyDown}
+                        role="combobox" aria-expanded={isOpen} aria-haspopup="listbox" aria-controls="player-results"
+                        aria-activedescendant={activeIndex >= 0 ? `player-opt-${filteredPlayers[activeIndex].id}` : undefined}
                         className="bg-transparent border-none outline-none w-full text-foreground font-bold"
                     />
                 </div>
@@ -68,21 +80,17 @@ export default function PlayerSearch({ players, onSelect, currentId }: Props) {
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
+                        id="player-results" role="listbox"
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
                         className="absolute z-50 left-0 right-0 mt-2 glass rounded-xl border border-white/10 shadow-2xl overflow-hidden max-h-[300px] overflow-y-auto"
                     >
                         {filteredPlayers.length > 0 ? (
-                            filteredPlayers.map(p => (
+                            filteredPlayers.map((p, i) => (
                                 <button
-                                    key={p.id}
-                                    onClick={() => {
-                                        onSelect(p.id);
-                                        setQuery('');
-                                        setIsOpen(false);
-                                    }}
-                                    className={`w-full text-left px-4 py-3 flex items-center justify-between hover:bg-val-red/10 transition-colors ${p.id === currentId ? 'bg-val-red/5 text-val-red' : ''}`}
+                                    key={p.id} id={`player-opt-${p.id}`} role="option" aria-selected={i === activeIndex}
+                                    onClick={() => { onSelect(p.id); setQuery(''); setIsOpen(false); }}
+                                    onMouseEnter={() => setActiveIndex(i)}
+                                    className={`w-full text-left px-4 py-3 flex items-center justify-between hover:bg-val-red/10 transition-colors ${p.id === currentId ? 'bg-val-red/5 text-val-red' : ''} ${i === activeIndex ? 'bg-val-red/20' : ''}`}
                                 >
                                     <div>
                                         <div className="font-bold">{p.name}</div>
@@ -95,7 +103,7 @@ export default function PlayerSearch({ players, onSelect, currentId }: Props) {
                             ))
                         ) : (
                             <div className="px-4 py-8 text-center text-foreground/40 italic">
-                                No players found matching "{query}"
+                                No players found matching &quot;{query}&quot;
                             </div>
                         )}
                     </motion.div>
