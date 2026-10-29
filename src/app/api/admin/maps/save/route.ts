@@ -18,7 +18,7 @@ function isAuthorized(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json();
-  const { matchId, mapData, playerStats, meta, rounds, playerRounds } = body || {};
+  const { matchId, mapData, playerStats, meta, rounds, playerRounds, playerPositions } = body || {};
   if (!matchId || !mapData) return NextResponse.json({ error: 'bad request' }, { status: 400 });
   // Enforce map index cap based on match format
   const { data: fmtMatch } = await supabaseServer.from('matches').select('format').eq('id', matchId).single();
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     supabaseServer.from('match_stats_map').delete().eq('match_id', matchId).eq('map_index', mapData.index),
     supabaseServer.from('match_rounds').delete().eq('match_id', matchId).eq('map_index', mapData.index),
     supabaseServer.from('match_player_rounds').delete().eq('match_id', matchId).eq('map_index', mapData.index),
+    supabaseServer.from('match_player_positions').delete().eq('match_id', matchId).eq('map_index', mapData.index),
   ]);
   {
     const { error } = await supabaseServer.from('match_maps').insert({
@@ -131,6 +132,25 @@ export async function POST(req: NextRequest) {
         damage: pr.damage,
         weapon: pr.weapon,
         spent: pr.spent
+      }))
+    );
+  }
+
+  // Insert player positions data (kill/plant/defuse snapshots)
+  if (Array.isArray(playerPositions) && playerPositions.length > 0) {
+    await supabaseServer.from('match_player_positions').insert(
+      playerPositions.map((pp: any) => ({
+        match_id: matchId,
+        map_index: mapData.index,
+        round_number: pp.round_number,
+        event_type: pp.event_type,
+        event_seq: pp.event_seq,
+        player_id: pp.player_id,
+        role: pp.role,
+        x: pp.x,
+        y: pp.y,
+        view_radians: pp.view_radians,
+        time_in_round_ms: pp.time_in_round_ms,
       }))
     );
   }

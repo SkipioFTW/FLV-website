@@ -246,6 +246,7 @@ export function parseTrackerJson(
     t2_rounds: number;
     rounds: any[];
     playerRounds: any[];
+    playerPositions: any[];
 } {
     try {
         const suggestions: Record<string, any> = {};
@@ -406,9 +407,9 @@ export function parseTrackerJson(
         t1_rounds = Number(r1?.stats?.roundsWon?.value ?? 0);
         t2_rounds = Number(r2?.stats?.roundsWon?.value ?? 0);
 
-        return { suggestions, map_name, t1_rounds, t2_rounds, rounds, playerRounds: playerRoundsArr };
+        return { suggestions, map_name, t1_rounds, t2_rounds, rounds, playerRounds: playerRoundsArr, playerPositions: [] };
     } catch {
-        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [] };
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [], playerPositions: [] };
     }
 }
 
@@ -446,6 +447,7 @@ export function parseHenrikDevJson(
         const suggestions: Record<string, any> = {};
         const roundsArr: any[] = [];
         const playerRoundsArr: any[] = [];
+        const positionsArr: any[] = [];
         const lower = (x: any) => String(x || "").trim().toLowerCase();
         
         const data = js?.data || {};
@@ -758,6 +760,70 @@ export function parseHenrikDevJson(
             };
             roundsArr.push(roundEntry);
 
+            const killerRidOf = (k: any) => ridOf(k.killer);
+            const victimRidOf = (k: any) => ridOf(k.victim);
+            (roundKills[rNum] || []).forEach((k: any, killIdx: number) => {
+                const killerRid = killerRidOf(k);
+                const victimRid = victimRidOf(k);
+                const assistRids = (k.assistants || []).map((a: any) => ridOf(a));
+                (k.player_locations || []).forEach((loc: any) => {
+                    const locRid = ridOf(loc.player);
+                    if (!locRid || !loc.location) return;
+                    const role = locRid === killerRid ? 'killer'
+                        : locRid === victimRid ? 'victim'
+                        : assistRids.includes(locRid) ? 'assist' : 'other';
+                    positionsArr.push({
+                        rid: locRid,
+                        round_number: rNum + 1,
+                        event_type: 'kill',
+                        event_seq: killIdx,
+                        role,
+                        x: loc.location.x,
+                        y: loc.location.y,
+                        view_radians: loc.view_radians ?? null,
+                        time_in_round_ms: k.time_in_round_in_ms ?? null,
+                    });
+                });
+            });
+
+            if (r.plant && Array.isArray(r.plant.player_locations)) {
+                const planterRid = r.plant.player ? ridOf(r.plant.player) : "";
+                r.plant.player_locations.forEach((loc: any) => {
+                    const locRid = ridOf(loc.player);
+                    if (!locRid || !loc.location) return;
+                    positionsArr.push({
+                        rid: locRid,
+                        round_number: rNum + 1,
+                        event_type: 'plant',
+                        event_seq: 0,
+                        role: locRid === planterRid ? 'planter' : 'other',
+                        x: loc.location.x,
+                        y: loc.location.y,
+                        view_radians: loc.view_radians ?? null,
+                        time_in_round_ms: null,
+                    });
+                });
+            }
+
+            if (r.defuse && Array.isArray(r.defuse.player_locations)) {
+                const defuserRid = r.defuse.player ? ridOf(r.defuse.player) : "";
+                r.defuse.player_locations.forEach((loc: any) => {
+                    const locRid = ridOf(loc.player);
+                    if (!locRid || !loc.location) return;
+                    positionsArr.push({
+                        rid: locRid,
+                        round_number: rNum + 1,
+                        event_type: 'defuse',
+                        event_seq: 0,
+                        role: locRid === defuserRid ? 'defuser' : 'other',
+                        x: loc.location.x,
+                        y: loc.location.y,
+                        view_radians: loc.view_radians ?? null,
+                        time_in_round_ms: null,
+                    });
+                });
+            }
+
             const rStats = r.stats || r.player_stats || [];
             if (Array.isArray(rStats)) {
                 rStats.forEach((ps: any) => {
@@ -802,9 +868,9 @@ export function parseHenrikDevJson(
             }
         });
         
-        return { suggestions, map_name, t1_rounds, t2_rounds, rounds: roundsArr, playerRounds: playerRoundsArr };
+        return { suggestions, map_name, t1_rounds, t2_rounds, rounds: roundsArr, playerRounds: playerRoundsArr, playerPositions: positionsArr };
     } catch {
-        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [] };
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [], playerPositions: [] };
     }
 }
 
@@ -2955,13 +3021,14 @@ export async function saveMapResults(
     }[],
     meta?: { pendingId?: number, url?: string },
     rounds?: any[],
-    playerRounds?: any[]
+    playerRounds?: any[],
+    playerPositions?: any[]
 ): Promise<boolean> {
     try {
         const res = await fetch('/api/admin/maps/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matchId, mapData, playerStats, meta, rounds, playerRounds })
+            body: JSON.stringify({ matchId, mapData, playerStats, meta, rounds, playerRounds, playerPositions })
         } as any);
         if (!res.ok) throw new Error(await res.text());
         return true;

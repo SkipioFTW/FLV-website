@@ -129,6 +129,21 @@ erDiagram
         int spent
     }
 
+    MATCH_PLAYER_POSITIONS {
+        uuid id PK
+        int match_id FK
+        int map_index
+        int round_number
+        text event_type "kill, plant, or defuse"
+        int event_seq
+        int player_id FK
+        text role "killer, victim, assist, planter, defuser, other"
+        float x
+        float y
+        float view_radians
+        int time_in_round_ms
+    }
+
     TEAM_HISTORY {
         int id PK
         int team_id FK
@@ -167,10 +182,12 @@ erDiagram
     PLAYERS ||--o{ PLAYER_HISTORY : "player_id"
     PLAYERS ||--o{ PLAYER_TEAM_HISTORY : "player_id"
     PLAYERS ||--o{ MATCH_PLAYER_ROUNDS : "player_id"
+    PLAYERS ||--o{ MATCH_PLAYER_POSITIONS : "player_id"
     MATCHES ||--o{ MATCH_MAPS : "match_id"
     MATCHES ||--o{ MATCH_STATS_MAP : "match_id"
     MATCHES ||--o{ MATCH_ROUNDS : "match_id"
     MATCHES ||--o{ MATCH_PLAYER_ROUNDS : "match_id"
+    MATCHES ||--o{ MATCH_PLAYER_POSITIONS : "match_id"
 ```
 
 ### Other tables (not part of the main data flow)

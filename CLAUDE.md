@@ -71,6 +71,8 @@ Core tables: `seasons`, `teams`, `players`, `matches`, `match_maps`, `match_stat
 ### Match result import flow
 All match entry paths converge on the same two endpoints: `POST /api/admin/maps/parse` (fetches tracker/HenrikDev data, matches Riot IDs against the `players` table, detects subs, returns per-team stat rows + `unmatched` Riot IDs) then `POST /api/admin/maps/save` per map (writes `match_maps`/`match_stats_map`/`match_rounds`/`match_player_rounds`, recomputes match totals/winner, advances playoff brackets). The admin panel's Unified Score Editor does this client-side; Discord bots call the endpoints with `x-bot-secret`. Match-level forfeits are not saved through this flow — they're a direct `matches` update (13-0, `is_forfeit=1`, `maps_played=0`, map detail rows wiped).
 
+When imported via the HenrikDev path (`useApi`), `parseHenrikDevJson` also extracts per-event player positions (x/y + facing angle at each kill/plant/defuse) into `match_player_positions` — capture-only for now; the tracker.gg JSON path does not carry this data.
+
 ## Documentation map
 
 Read these before making non-trivial changes in their area — they're kept accurate and detailed:
