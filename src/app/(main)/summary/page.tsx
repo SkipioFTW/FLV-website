@@ -164,7 +164,7 @@ function SummaryContent() {
                 mapIndex={map.index}
                 mapName={map.name}
                 team1Id={details.match.team1.id}
-                roster={Object.fromEntries(map.stats.map((s: any) => [s.player_id, { name: s.player_name, team_id: s.team_id }]))}
+                roster={Object.fromEntries(map.stats.map((s: any) => [s.player_id, { name: s.player_name, team_id: s.team_id, agent: s.agent }]))}
               />
 
               <div className="grid md:grid-cols-2 gap-8">

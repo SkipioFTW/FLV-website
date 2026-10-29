@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getMatchMapPositions, type PositionSnapshotRow } from '@/lib/data';
 import { VALORANT_MAP_CALIBRATION, projectToMinimap } from '@/lib/valorantMaps';
+import { VALORANT_AGENT_PORTRAITS, viewDirection } from '@/lib/valorantAgents';
 
 interface Props {
     matchId: number;
     mapIndex: number;
     mapName: string;
     team1Id: number;
-    roster: Record<number, { name: string; team_id: number }>;
+    roster: Record<number, { name: string; team_id: number; agent: string }>;
 }
 
 type Snapshot = {
@@ -17,8 +18,13 @@ type Snapshot = {
     event_type: string;
     event_seq: number;
     time_in_round_ms: number | null;
-    players: { player_id: number; x: number; y: number; role: string }[];
+    players: { player_id: number; x: number; y: number; role: string; view_radians: number | null }[];
 };
+
+// Stylized horizontal FOV for the facing cone -- Valorant's real FOV is ~103deg,
+// this just needs to read clearly on a small minimap, not be exact.
+const FOV_RADIANS = (100 * Math.PI) / 180;
+const CONE_LENGTH_PCT = 16;
 
 const ROLE_LABEL: Record<string, string> = {
     killer: 'Killer', victim: 'Victim', assist: 'Assist', planter: 'Planter', defuser: 'Defuser',
@@ -61,7 +67,7 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
             if (!snaps.has(key)) {
                 snaps.set(key, { round_number: r.round_number, event_type: r.event_type, event_seq: r.event_seq, time_in_round_ms: r.time_in_round_ms, players: [] });
             }
-            snaps.get(key)!.players.push({ player_id: r.player_id, x: r.x, y: r.y, role: r.role });
+            snaps.get(key)!.players.push({ player_id: r.player_id, x: r.x, y: r.y, role: r.role, view_radians: r.view_radians });
         });
         const result = new Map<number, Snapshot[]>();
         byRound.forEach((snaps, roundNum) => {
@@ -131,29 +137,65 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
 
             <div className="relative w-full max-w-xl mx-auto aspect-square rounded-lg overflow-hidden border border-white/10 bg-black/40">
                 <img src={cal.displayIcon} alt={mapName} className="absolute inset-0 w-full h-full object-cover" />
+
+                {/* Facing cones -- every player gets one (dim), the acting player's is brighter */}
+                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    {current?.players.map((p, i) => {
+                        const pt = projectToMinimap(p.x, p.y, mapName);
+                        if (!pt || p.view_radians == null) return null;
+                        const isTeam1 = roster[p.player_id]?.team_id === team1Id;
+                        const isActor = p.role !== 'other' && p.role !== 'assist';
+                        const color = isTeam1 ? '#0ea5e9' : '#ef4444';
+                        const dir = viewDirection(p.view_radians);
+                        const rotate = (v: { x: number; y: number }, ang: number) => ({
+                            x: v.x * Math.cos(ang) - v.y * Math.sin(ang),
+                            y: v.x * Math.sin(ang) + v.y * Math.cos(ang),
+                        });
+                        const left = rotate(dir, -FOV_RADIANS / 2);
+                        const right = rotate(dir, FOV_RADIANS / 2);
+                        const cx = pt.left * 100, cy = pt.top * 100;
+                        const points = [
+                            `${cx},${cy}`,
+                            `${cx + left.x * CONE_LENGTH_PCT},${cy + left.y * CONE_LENGTH_PCT}`,
+                            `${cx + right.x * CONE_LENGTH_PCT},${cy + right.y * CONE_LENGTH_PCT}`,
+                        ].join(' ');
+                        return <polygon key={i} points={points} fill={color} opacity={isActor ? 0.3 : 0.1} />;
+                    })}
+                </svg>
+
                 {current?.players.map((p, i) => {
                     const pt = projectToMinimap(p.x, p.y, mapName);
                     if (!pt) return null;
                     const isTeam1 = roster[p.player_id]?.team_id === team1Id;
                     const isActor = p.role !== 'other' && p.role !== 'assist';
                     const color = isTeam1 ? '#0ea5e9' : '#ef4444';
+                    const agent = roster[p.player_id]?.agent;
+                    const portrait = agent ? VALORANT_AGENT_PORTRAITS[agent] : undefined;
+                    const size = isActor ? 34 : 26;
                     return (
                         <div
                             key={i}
-                            className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
+                            className="absolute -translate-x-1/2 -translate-y-1/2"
                             style={{ left: `${pt.left * 100}%`, top: `${pt.top * 100}%` }}
                             title={`${roster[p.player_id]?.name || 'Unknown'}${ROLE_LABEL[p.role] ? ` (${ROLE_LABEL[p.role]})` : ''}`}
                         >
-                            <div
-                                className="rounded-full"
-                                style={{
-                                    width: isActor ? 14 : 9,
-                                    height: isActor ? 14 : 9,
-                                    backgroundColor: color,
-                                    border: isActor ? '2px solid white' : '1px solid rgba(255,255,255,0.4)',
-                                    boxShadow: isActor ? `0 0 8px ${color}` : undefined,
-                                }}
-                            />
+                            {portrait ? (
+                                <img
+                                    src={portrait}
+                                    alt={agent}
+                                    className="rounded-full object-cover"
+                                    style={{
+                                        width: size, height: size,
+                                        border: `2px solid ${color}`,
+                                        boxShadow: isActor ? `0 0 10px ${color}` : undefined,
+                                    }}
+                                />
+                            ) : (
+                                <div
+                                    className="rounded-full"
+                                    style={{ width: size, height: size, backgroundColor: color, border: '2px solid white' }}
+                                />
+                            )}
                         </div>
                     );
                 })}
