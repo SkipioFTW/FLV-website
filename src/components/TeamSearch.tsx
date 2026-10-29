@@ -23,8 +23,8 @@ export default function TeamSearch({ teams, onSelect, currentId }: Props) {
     const filteredTeams = query.trim() === ''
         ? teams.slice(0, 10)
         : teams.filter(t =>
-            t.name.toLowerCase().includes(query.toLowerCase()) ||
-            t.tag.toLowerCase().includes(query.toLowerCase())
+            (t.name || '').toLowerCase().includes(query.toLowerCase()) ||
+            (t.tag || '').toLowerCase().includes(query.toLowerCase())
         ).slice(0, 10);
 
     const currentTeam = teams.find(t => t.id === currentId);

@@ -23,8 +23,8 @@ export default function PlayerSearch({ players, onSelect, currentId }: Props) {
     const filteredPlayers = query.trim() === ''
         ? players.slice(0, 10)
         : players.filter(p =>
-            p.name.toLowerCase().includes(query.toLowerCase()) ||
-            p.riot_id.toLowerCase().includes(query.toLowerCase())
+            (p.name || '').toLowerCase().includes(query.toLowerCase()) ||
+            (p.riot_id || '').toLowerCase().includes(query.toLowerCase())
         ).slice(0, 10);
 
     const currentPlayer = players.find(p => p.id === currentId);
