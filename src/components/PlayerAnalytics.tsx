@@ -6,9 +6,10 @@ import {
     PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { type PlayerStats, getPlayerStats } from '@/lib/data';
+import { type PlayerStats, type PositionPoint, getPlayerStats, getPlayerPositions } from '@/lib/data';
 
 import PlayerSearch from './PlayerSearch';
+import PositionHeatmap from './PositionHeatmap';
 
 const COLORS = ['#FF4655', '#3FD1FF', '#FFB800', '#00FF94', '#8E44AD', '#E67E22'];
 
@@ -22,6 +23,7 @@ export default function PlayerAnalytics({ players, initialSelectedId, seasonId }
     const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? players[0]?.id ?? null);
     const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
     const [stats, setStats] = useState<PlayerStats | null>(null);
+    const [positions, setPositions] = useState<PositionPoint[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -32,6 +34,7 @@ export default function PlayerAnalytics({ players, initialSelectedId, seasonId }
                 setStats(data);
                 setLoading(false);
             });
+            getPlayerPositions(selectedId, seasonId).then(setPositions);
         }
     }, [selectedId, initialSelectedId, matchType, seasonId]);
 
@@ -332,6 +335,8 @@ export default function PlayerAnalytics({ players, initialSelectedId, seasonId }
                                 </div>
                             </div>
                         </div>
+
+                        <PositionHeatmap positions={positions} />
                     </motion.div>
                 ) : (
                     <div className="h-[400px] flex flex-col items-center justify-center text-center glass rounded-xl border border-white/5">

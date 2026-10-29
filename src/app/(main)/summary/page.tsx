@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { getAllMatches, getMatchDetails } from "@/lib/data";
 import EconomyChart from "@/components/EconomyChart";
+import RoundReplay from "@/components/RoundReplay";
 import MatchSearch from "@/components/MatchSearch";
 
 import { useSearchParams } from "next/navigation";
@@ -156,6 +157,15 @@ function SummaryContent() {
                   </div>
                 </div>
               </div>
+
+              {/* Round Replay */}
+              <RoundReplay
+                matchId={matchId}
+                mapIndex={map.index}
+                mapName={map.name}
+                team1Id={details.match.team1.id}
+                roster={Object.fromEntries(map.stats.map((s: any) => [s.player_id, { name: s.player_name, team_id: s.team_id }]))}
+              />
 
               <div className="grid md:grid-cols-2 gap-8">
                 {[details.match.team1, details.match.team2].map((team) => {

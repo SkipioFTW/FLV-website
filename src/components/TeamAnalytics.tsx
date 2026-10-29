@@ -6,7 +6,8 @@ import {
     BarChart, Bar, Legend
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { type TeamPerformance, getTeamPerformance } from '@/lib/data';
+import { type TeamPerformance, type PositionPoint, getTeamPerformance, getTeamPositions } from '@/lib/data';
+import PositionHeatmap from './PositionHeatmap';
 
 interface Props {
     teams: { id: number; name: string; tag: string }[];
@@ -19,6 +20,7 @@ export default function TeamAnalytics({ teams, initialSelectedId, seasonId }: Pr
     const [matchType, setMatchType] = useState<'regular' | 'playoff' | undefined>(undefined);
     const [viewMode, setViewMode] = useState<'overview' | 'scouting'>('overview');
     const [stats, setStats] = useState<TeamPerformance | null>(null);
+    const [positions, setPositions] = useState<PositionPoint[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -29,6 +31,7 @@ export default function TeamAnalytics({ teams, initialSelectedId, seasonId }: Pr
                 setStats(data);
                 setLoading(false);
             });
+            getTeamPositions(selectedId, seasonId).then(setPositions);
         }
     }, [selectedId, initialSelectedId, matchType, seasonId]);
 
@@ -217,6 +220,8 @@ export default function TeamAnalytics({ teams, initialSelectedId, seasonId }: Pr
                         ) : (
                             <TeamScoutingReport stats={stats} />
                         )}
+
+                        <PositionHeatmap positions={positions} />
                     </motion.div>
                 ) : (
                     <div className="h-[400px] flex items-center justify-center text-foreground/40 italic">

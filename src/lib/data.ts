@@ -2611,6 +2611,138 @@ async function getPlayoffMatches_uncached(seasonId?: string): Promise<PlayoffMat
     }
 }
 
+export type PositionPoint = { map_name: string; event_type: string; role: string; x: number; y: number };
+
+/**
+ * Fetch a player's kill/plant/defuse position snapshots across a season (or all-time).
+ */
+export async function getPlayerPositions(playerId: number, seasonId?: string): Promise<PositionPoint[]> {
+    try {
+        const activeSeason = seasonId || await getDefaultSeason();
+        const isAllTime = activeSeason === 'all';
+
+        let filterMatchIds: Set<number> | null = null;
+        if (!isAllTime) {
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            const { data: filterMatches, error: matchesError } = await supabase.from('matches').select('id').or(seasonFilter);
+            if (matchesError) throw matchesError;
+            filterMatchIds = new Set((filterMatches || []).map(m => m.id));
+        }
+
+        const { data: positions, error: positionsError } = await supabase
+            .from('match_player_positions')
+            .select('match_id,map_index,event_type,role,x,y')
+            .eq('player_id', playerId);
+        if (positionsError) throw positionsError;
+
+        const relevant = filterMatchIds ? (positions || []).filter(p => filterMatchIds!.has(p.match_id)) : (positions || []);
+        if (relevant.length === 0) return [];
+
+        const matchIds = [...new Set(relevant.map(p => p.match_id))];
+        const { data: maps, error: mapsError } = await supabase
+            .from('match_maps')
+            .select('match_id,map_index,map_name')
+            .in('match_id', matchIds);
+        if (mapsError) throw mapsError;
+        const mapNameByKey = new Map((maps || []).map(m => [`${m.match_id}-${m.map_index}`, m.map_name]));
+
+        return relevant.map(p => ({
+            map_name: mapNameByKey.get(`${p.match_id}-${p.map_index}`) || 'Unknown',
+            event_type: p.event_type,
+            role: p.role,
+            x: p.x,
+            y: p.y,
+        }));
+    } catch (error) {
+        console.error('Error fetching player positions:', error);
+        return [];
+    }
+}
+
+/**
+ * Fetch a team's kill/plant/defuse position snapshots across a season (or all-time),
+ * restricted to the players who actually played for this team on each map (per
+ * match_stats_map.team_id, so subs are handled correctly and the opposing team's
+ * positions in the same snapshots are excluded).
+ */
+export async function getTeamPositions(teamId: number, seasonId?: string): Promise<PositionPoint[]> {
+    try {
+        const activeSeason = seasonId || await getDefaultSeason();
+        const isAllTime = activeSeason === 'all';
+
+        let matchQuery = supabase
+            .from('matches')
+            .select('id')
+            .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`)
+            .eq('status', 'completed');
+        if (!isAllTime) {
+            const seasonFilter = activeSeason === 'S23' ? 'season_id.eq.S23,season_id.is.null' : `season_id.eq.${activeSeason}`;
+            matchQuery = matchQuery.or(seasonFilter);
+        }
+        const { data: matches, error: matchesError } = await matchQuery;
+        if (matchesError) throw matchesError;
+        const matchIds = (matches || []).map(m => m.id);
+        if (matchIds.length === 0) return [];
+
+        const [statsRes, mapsRes, positionsRes] = await Promise.all([
+            supabase.from('match_stats_map').select('match_id,map_index,player_id').in('match_id', matchIds).eq('team_id', teamId),
+            supabase.from('match_maps').select('match_id,map_index,map_name').in('match_id', matchIds),
+            supabase.from('match_player_positions').select('match_id,map_index,event_type,role,x,y,player_id').in('match_id', matchIds),
+        ]);
+        if (statsRes.error) throw statsRes.error;
+        if (mapsRes.error) throw mapsRes.error;
+        if (positionsRes.error) throw positionsRes.error;
+
+        const rosterKeys = new Set((statsRes.data || []).map(s => `${s.match_id}-${s.map_index}-${s.player_id}`));
+        const mapNameByKey = new Map((mapsRes.data || []).map(m => [`${m.match_id}-${m.map_index}`, m.map_name]));
+
+        return (positionsRes.data || [])
+            .filter(p => rosterKeys.has(`${p.match_id}-${p.map_index}-${p.player_id}`))
+            .map(p => ({
+                map_name: mapNameByKey.get(`${p.match_id}-${p.map_index}`) || 'Unknown',
+                event_type: p.event_type,
+                role: p.role,
+                x: p.x,
+                y: p.y,
+            }));
+    } catch (error) {
+        console.error('Error fetching team positions:', error);
+        return [];
+    }
+}
+
+export type PositionSnapshotRow = {
+    round_number: number;
+    event_type: string;
+    event_seq: number;
+    player_id: number;
+    role: string;
+    x: number;
+    y: number;
+    view_radians: number | null;
+    time_in_round_ms: number | null;
+};
+
+/**
+ * Fetch all position rows for one specific match map, ordered for replay stepping.
+ */
+export async function getMatchMapPositions(matchId: number, mapIndex: number): Promise<PositionSnapshotRow[]> {
+    try {
+        const { data, error } = await supabase
+            .from('match_player_positions')
+            .select('round_number,event_type,event_seq,player_id,role,x,y,view_radians,time_in_round_ms')
+            .eq('match_id', matchId)
+            .eq('map_index', mapIndex)
+            .order('round_number', { ascending: true })
+            .order('event_seq', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.error('Error fetching match map positions:', error);
+        return [];
+    }
+}
+
 export async function generateNextPlayoffRound(currentRound: number): Promise<boolean> {
     try {
         const activeSeason = await getDefaultSeason();
