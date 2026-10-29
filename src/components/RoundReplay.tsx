@@ -23,8 +23,8 @@ type Snapshot = {
 
 // Stylized horizontal FOV for the facing cone -- Valorant's real FOV is ~103deg,
 // this just needs to read clearly on a small minimap, not be exact.
-const FOV_RADIANS = (100 * Math.PI) / 180;
-const CONE_LENGTH_PCT = 16;
+const FOV_RADIANS = (90 * Math.PI) / 180;
+const CONE_LENGTH_PCT = 7;
 
 const ROLE_LABEL: Record<string, string> = {
     killer: 'Killer', victim: 'Victim', assist: 'Assist', planter: 'Planter', defuser: 'Defuser',
