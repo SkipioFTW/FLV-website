@@ -784,6 +784,27 @@ export function parseHenrikDevJson(
                         time_in_round_ms: k.time_in_round_in_ms ?? null,
                     });
                 });
+
+                // HenrikDev's player_locations only covers players still being
+                // tracked at that instant -- the victim isn't in it. Their death
+                // position is the kill event's own top-level `location` field
+                // instead (confirmed empirically: player_locations always has
+                // exactly 9 of 10 players, and the victim object itself carries
+                // no coordinates per the API schema, so this is the only place
+                // their position can come from). No view_radians is given for it.
+                if (victimRid && k.location) {
+                    positionsArr.push({
+                        rid: victimRid,
+                        round_number: rNum + 1,
+                        event_type: 'kill',
+                        event_seq: killIdx,
+                        role: 'victim',
+                        x: k.location.x,
+                        y: k.location.y,
+                        view_radians: null,
+                        time_in_round_ms: k.time_in_round_in_ms ?? null,
+                    });
+                }
             });
 
             if (r.plant && Array.isArray(r.plant.player_locations)) {
