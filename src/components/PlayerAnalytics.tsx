@@ -99,7 +99,7 @@ export default function PlayerAnalytics({ players, initialSelectedId, seasonId }
                                 <div className="flex flex-col md:flex-row md:items-end gap-6">
                                     <div className="w-24 h-24 rounded-2xl bg-val-deep border-4 border-val-red flex items-center justify-center shadow-2xl overflow-hidden">
                                         <span className="font-display text-4xl font-black italic text-white uppercase">
-                                            {stats.name[0]}
+                                            {stats.name?.[0] || '?'}
                                         </span>
                                     </div>
                                     <div className="flex-1">

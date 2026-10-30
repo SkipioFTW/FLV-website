@@ -52,7 +52,7 @@ export default function LeaderboardPodium({ topPlayers }: PodiumProps) {
                                         }`}
                                 >
                                     <span className="font-display text-2xl md:text-4xl font-black italic">
-                                        {player.name[0]}
+                                        {player.name?.[0] || '?'}
                                     </span>
                                 </motion.div>
                                 <div className="font-display font-black text-lg md:text-2xl uppercase tracking-tighter truncate max-w-[120px] md:max-w-none">

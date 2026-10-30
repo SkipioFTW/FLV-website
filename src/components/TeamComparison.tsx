@@ -194,7 +194,7 @@ export default function TeamComparison({ teams, seasonId }: { teams: { id: numbe
                                         {team.playerStats.slice(0, 5).map((player) => (
                                             <div key={player.name} className={`flex ${idx === 0 ? 'flex-row-reverse' : 'flex-row'} items-center gap-4 group`}>
                                                 <div className={`w-10 h-10 rounded border ${idx === 0 ? 'border-val-blue/20 bg-val-blue/5' : 'border-val-red/20 bg-val-red/5'} flex items-center justify-center font-display font-black`}>
-                                                    {player.name[0]}
+                                                    {player.name?.[0] || '?'}
                                                 </div>
                                                 <div>
                                                     <div className="text-sm font-bold group-hover:text-white transition-colors">{player.name}</div>

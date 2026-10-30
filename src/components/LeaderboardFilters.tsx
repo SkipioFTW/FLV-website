@@ -184,7 +184,7 @@ export default function LeaderboardFilters({
                                     <td className="px-4 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded bg-val-blue/10 flex items-center justify-center text-val-blue font-black text-xs">
-                                                {player.name[0]}
+                                                {player.name?.[0] || '?'}
                                             </div>
                                             <div>
                                                 <div className="font-bold text-sm text-foreground">{player.name}</div>
