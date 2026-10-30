@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getMatchMapPositions, type PositionSnapshotRow } from '@/lib/data';
 import { VALORANT_MAP_CALIBRATION, projectToMinimap } from '@/lib/valorantMaps';
 import { VALORANT_AGENT_PORTRAITS, viewDirection } from '@/lib/valorantAgents';
+import RoundStrip from './RoundStrip';
 
 interface Props {
     matchId: number;
@@ -11,6 +12,7 @@ interface Props {
     mapName: string;
     team1Id: number;
     roster: Record<number, { name: string; team_id: number; agent: string }>;
+    rounds: { round_number: number; winning_team_id: number; win_type: string }[];
 }
 
 type Snapshot = {
@@ -18,13 +20,13 @@ type Snapshot = {
     event_type: string;
     event_seq: number;
     time_in_round_ms: number | null;
-    players: { player_id: number; x: number; y: number; role: string; view_radians: number | null }[];
+    players: { player_id: number; x: number; y: number; role: string; view_radians: number | null; weapon: string | null }[];
 };
 
 // Stylized horizontal FOV for the facing cone -- Valorant's real FOV is ~103deg,
 // this just needs to read clearly on a small minimap, not be exact.
-const FOV_RADIANS = (90 * Math.PI) / 180;
-const CONE_LENGTH_PCT = 7;
+const FOV_RADIANS = (95 * Math.PI) / 180;
+const CONE_LENGTH_PCT = 13;
 
 const ROLE_LABEL: Record<string, string> = {
     killer: 'Killer', victim: 'Victim', assist: 'Assist', planter: 'Planter', defuser: 'Defuser',
@@ -38,7 +40,7 @@ function formatTime(ms: number | null) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roster }: Props) {
+export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roster, rounds }: Props) {
     const [rows, setRows] = useState<PositionSnapshotRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedRound, setSelectedRound] = useState<number | null>(null);
@@ -67,7 +69,7 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
             if (!snaps.has(key)) {
                 snaps.set(key, { round_number: r.round_number, event_type: r.event_type, event_seq: r.event_seq, time_in_round_ms: r.time_in_round_ms, players: [] });
             }
-            snaps.get(key)!.players.push({ player_id: r.player_id, x: r.x, y: r.y, role: r.role, view_radians: r.view_radians });
+            snaps.get(key)!.players.push({ player_id: r.player_id, x: r.x, y: r.y, role: r.role, view_radians: r.view_radians, weapon: r.weapon });
         });
         const result = new Map<number, Snapshot[]>();
         byRound.forEach((snaps, roundNum) => {
@@ -90,15 +92,40 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
     const current = snapshots[snapshotIdx];
     const cal = VALORANT_MAP_CALIBRATION[mapName];
 
-    const label = useMemo(() => {
-        if (!current) return '';
-        if (current.event_type === 'plant') return 'Spike Planted';
-        if (current.event_type === 'defuse') return 'Spike Defused';
-        const kills = snapshots.filter(s => s.event_type === 'kill');
-        const num = kills.findIndex(s => s === current) + 1;
-        const time = formatTime(current.time_in_round_ms);
+    const nameOf = (playerId: number) => roster[playerId]?.name || 'Unknown';
+
+    const labelFor = (snap: Snapshot, snaps: Snapshot[]) => {
+        if (snap.event_type === 'plant') return 'Spike Planted';
+        if (snap.event_type === 'defuse') return 'Spike Defused';
+        const kills = snaps.filter(s => s.event_type === 'kill');
+        const num = kills.findIndex(s => s === snap) + 1;
+        const time = formatTime(snap.time_in_round_ms);
         return `Kill ${num} of ${kills.length}${time ? ` · ${time} into round` : ''}`;
-    }, [current, snapshots]);
+    };
+
+    const detailFor = (snap: Snapshot) => {
+        if (snap.event_type === 'plant') {
+            const planter = snap.players.find(p => p.role === 'planter');
+            return planter ? `${nameOf(planter.player_id)} planted the Spike` : 'Spike planted';
+        }
+        if (snap.event_type === 'defuse') {
+            const defuser = snap.players.find(p => p.role === 'defuser');
+            return defuser ? `${nameOf(defuser.player_id)} defused the Spike` : 'Spike defused';
+        }
+        const killer = snap.players.find(p => p.role === 'killer');
+        const victim = snap.players.find(p => p.role === 'victim');
+        const assists = snap.players.filter(p => p.role === 'assist');
+        if (!killer || !victim) return '';
+        let text = `${nameOf(killer.player_id)} eliminated ${nameOf(victim.player_id)}`;
+        if (killer.weapon) text += ` (${killer.weapon})`;
+        if (assists.length > 0) {
+            text += ` — assist: ${assists.map(a => nameOf(a.player_id)).join(', ')}`;
+        }
+        return text;
+    };
+
+    const label = current ? labelFor(current, snapshots) : '';
+    const detail = current ? detailFor(current) : '';
 
     if (loading) {
         return <div className="glass p-6 border border-white/5 rounded h-64 flex items-center justify-center text-foreground/40">Loading replay...</div>;
@@ -122,30 +149,60 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
         );
     }
 
+    const roundTiles = rounds.filter(r => availableRounds.includes(r.round_number));
+
     return (
         <div className="glass p-6 border border-white/5 rounded">
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-                <h5 className="font-display text-lg font-bold uppercase tracking-wider">Round Replay</h5>
-                <select
-                    value={effectiveRound ?? ''}
-                    onChange={e => { setSelectedRound(parseInt(e.target.value)); setSnapshotIdx(0); }}
-                    className="bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm font-bold"
-                >
-                    {availableRounds.map(r => <option key={r} value={r}>Round {r}</option>)}
-                </select>
+            <div className="flex items-center justify-between gap-4 mb-2">
+                <h5 className="font-display text-lg font-bold uppercase tracking-wider">Round {effectiveRound}</h5>
             </div>
+            <RoundStrip
+                rounds={roundTiles}
+                team1Id={team1Id}
+                selected={effectiveRound}
+                onSelect={r => { setSelectedRound(r); setSnapshotIdx(0); }}
+            />
 
+            <div className="grid lg:grid-cols-2 gap-6 mt-4">
+                {/* Event Log */}
+                <div className="border border-white/10 rounded-lg overflow-hidden flex flex-col max-h-[480px]">
+                    <div className="px-4 py-2 bg-white/5 text-[10px] font-black uppercase tracking-widest text-foreground/40">Event Log</div>
+                    <div className="overflow-y-auto divide-y divide-white/5">
+                        {snapshots.map((snap, i) => {
+                            const actor = snap.players.find(p => p.role === 'killer' || p.role === 'planter' || p.role === 'defuser');
+                            const agent = actor ? roster[actor.player_id]?.agent : undefined;
+                            const portrait = agent ? VALORANT_AGENT_PORTRAITS[agent] : undefined;
+                            const isTeam1 = actor ? roster[actor.player_id]?.team_id === team1Id : false;
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => setSnapshotIdx(i)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 text-left text-xs transition-colors ${i === snapshotIdx ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                                >
+                                    {portrait ? (
+                                        <img src={portrait} alt={agent} className="w-7 h-7 rounded-full object-cover shrink-0" style={{ border: `1.5px solid ${isTeam1 ? '#0ea5e9' : '#ef4444'}` }} />
+                                    ) : (
+                                        <div className="w-7 h-7 rounded-full bg-white/10 shrink-0" />
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                        <div className="font-bold truncate">{detailFor(snap) || labelFor(snap, snapshots)}</div>
+                                        <div className="text-foreground/40">{formatTime(snap.time_in_round_ms) || labelFor(snap, snapshots)}</div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+            <div>
             <div className="relative w-full max-w-xl mx-auto aspect-square rounded-lg overflow-hidden border border-white/10 bg-black/40">
                 <img src={cal.displayIcon} alt={mapName} className="absolute inset-0 w-full h-full object-cover" />
 
-                {/* Facing cones -- every player gets one (dim), the acting player's is brighter */}
+                {/* Facing cone -- only for the player whose action this snapshot is about */}
                 <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                    {current?.players.map((p, i) => {
+                    {current?.players.filter(p => p.role !== 'other' && p.role !== 'assist').map((p, i) => {
                         const pt = projectToMinimap(p.x, p.y, mapName);
                         if (!pt || p.view_radians == null) return null;
-                        const isTeam1 = roster[p.player_id]?.team_id === team1Id;
-                        const isActor = p.role !== 'other' && p.role !== 'assist';
-                        const color = isTeam1 ? '#0ea5e9' : '#ef4444';
                         const dir = viewDirection(p.view_radians);
                         const rotate = (v: { x: number; y: number }, ang: number) => ({
                             x: v.x * Math.cos(ang) - v.y * Math.sin(ang),
@@ -159,7 +216,18 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
                             `${cx + left.x * CONE_LENGTH_PCT},${cy + left.y * CONE_LENGTH_PCT}`,
                             `${cx + right.x * CONE_LENGTH_PCT},${cy + right.y * CONE_LENGTH_PCT}`,
                         ].join(' ');
-                        return <polygon key={i} points={points} fill={color} opacity={isActor ? 0.3 : 0.1} />;
+                        return (
+                            <polygon
+                                key={i}
+                                points={points}
+                                fill="white"
+                                fillOpacity={0.22}
+                                stroke="white"
+                                strokeOpacity={0.55}
+                                strokeWidth={0.4}
+                                strokeLinejoin="round"
+                            />
+                        );
                     })}
                 </svg>
 
@@ -201,7 +269,13 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
                 })}
             </div>
 
-            <div className="flex items-center justify-between gap-4 mt-4">
+            {detail && (
+                <div className="text-center mt-4 font-display text-base font-bold uppercase tracking-wide">
+                    {detail}
+                </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4 mt-3">
                 <button
                     disabled={snapshotIdx === 0}
                     onClick={() => setSnapshotIdx(i => Math.max(0, i - 1))}
@@ -209,7 +283,7 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
                 >
                     ← Prev
                 </button>
-                <div className="text-sm font-bold uppercase tracking-wider text-foreground/80">{label}</div>
+                <div className="text-xs font-bold uppercase tracking-wider text-foreground/50">{label}</div>
                 <button
                     disabled={snapshotIdx >= snapshots.length - 1}
                     onClick={() => setSnapshotIdx(i => Math.min(snapshots.length - 1, i + 1))}
@@ -217,6 +291,8 @@ export default function RoundReplay({ matchId, mapIndex, mapName, team1Id, roste
                 >
                     Next →
                 </button>
+            </div>
+            </div>
             </div>
         </div>
     );

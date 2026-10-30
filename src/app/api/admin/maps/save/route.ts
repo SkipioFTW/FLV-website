@@ -115,7 +115,9 @@ export async function POST(req: NextRequest) {
         plant: r.plant,
         defuse: r.defuse,
         economy_t1: r.economy_t1,
-        economy_t2: r.economy_t2
+        economy_t2: r.economy_t2,
+        bank_t1: r.bank_t1,
+        bank_t2: r.bank_t2
       }))
     );
   }
@@ -151,6 +153,7 @@ export async function POST(req: NextRequest) {
         y: pp.y,
         view_radians: pp.view_radians,
         time_in_round_ms: pp.time_in_round_ms,
+        weapon: pp.weapon,
       }))
     );
   }

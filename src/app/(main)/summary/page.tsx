@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { getAllMatches, getMatchDetails } from "@/lib/data";
-import EconomyChart from "@/components/EconomyChart";
-import RoundReplay from "@/components/RoundReplay";
+import MapSummaryTabs from "@/components/MapSummaryTabs";
 import MatchSearch from "@/components/MatchSearch";
 
 import { useSearchParams } from "next/navigation";
@@ -124,91 +123,12 @@ function SummaryContent() {
                 </div>
               </div>
 
-              {/* Economy and Round Chart */}
-              <div className="w-full mt-8 mb-4">
-                <EconomyChart rounds={map.rounds || []} team1_id={details.match.team1.id} />
-              </div>
-
-              {/* Round Breakdown */}
-              <div className="glass p-6 mb-8 border border-white/5 rounded">
-                <h5 className="font-display text-lg font-bold uppercase tracking-wider mb-4">Round Breakdown</h5>
-                <div className="overflow-x-auto">
-                  <div className="min-w-[600px] grid grid-cols-6 gap-4 text-[10px] font-black uppercase tracking-widest text-foreground/40 pb-2 border-b border-white/10">
-                    <div>Round</div>
-                    <div>Winner</div>
-                    <div>Type</div>
-                    <div>Plant/Defuse</div>
-                    <div className="text-right">T1 Economy</div>
-                    <div className="text-right">T2 Economy</div>
-                  </div>
-                  <div className="divide-y divide-white/5 max-h-64 overflow-y-auto pr-2">
-                    {map.rounds?.map((r: any) => (
-                      <div key={r.round_number} className="grid grid-cols-6 gap-4 py-2 text-[11px] items-center">
-                        <div className="font-bold">Round {r.round_number}</div>
-                        <div className={r.winning_team_id === details.match.team1.id ? 'text-val-blue font-bold' : 'text-val-red font-bold'}>
-                          {r.winning_team_id === details.match.team1.id ? details.match.team1.tag : details.match.team2.tag}
-                        </div>
-                        <div className="text-foreground/60">{r.win_type}</div>
-                        <div className="text-foreground/40">{r.plant ? (r.defuse ? "✓ Plant + Defuse" : "✓ Plant") : "-"}</div>
-                        <div className="text-right font-mono text-val-blue/80">${r.economy_t1.toLocaleString()}</div>
-                        <div className="text-right font-mono text-val-red/80">${r.economy_t2.toLocaleString()}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Round Replay */}
-              <RoundReplay
+              <MapSummaryTabs
                 matchId={matchId}
-                mapIndex={map.index}
-                mapName={map.name}
-                team1Id={details.match.team1.id}
-                roster={Object.fromEntries(map.stats.map((s: any) => [s.player_id, { name: s.player_name, team_id: s.team_id, agent: s.agent }]))}
+                map={map}
+                team1={details.match.team1}
+                team2={details.match.team2}
               />
-
-              <div className="grid md:grid-cols-2 gap-8">
-                {[details.match.team1, details.match.team2].map((team) => {
-                  const rows = map.stats.filter((s: any) => s.team_id === team.id);
-                  return (
-                    <div key={team.id} className="glass p-6 border border-white/5 rounded">
-                      <h5 className="font-display text-lg font-bold uppercase tracking-wider mb-4">{team.name} Scoreboard</h5>
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-12 gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/40">
-                          <div className="col-span-2">Player</div>
-                          <div>Agent</div>
-                          <div>ACS</div>
-                          <div>K</div>
-                          <div>D</div>
-                          <div>A</div>
-                          <div>ADR</div>
-                          <div>KAST</div>
-                          <div>HS%</div>
-                          <div>FK</div>
-                          <div>MK</div>
-                          <div>Sub</div>
-                        </div>
-                        {rows.map((r: any, i: number) => (
-                          <div key={`${r.player_id}-${i}`} className="grid grid-cols-12 gap-2 items-center text-[11px]">
-                            <a href={`/players?player_id=${r.player_id}`} className="col-span-2 hover:text-val-blue underline truncate">{r.player_name}</a>
-                            <div className="text-foreground/80">{r.agent}</div>
-                            <div className="text-val-blue font-bold">{Math.round(r.acs)}</div>
-                            <div>{r.kills}</div>
-                            <div className="text-val-red">{r.deaths}</div>
-                            <div>{r.assists}</div>
-                            <div>{Math.round(r.adr)}</div>
-                            <div>{Math.round(r.kast)}%</div>
-                            <div>{Math.round(r.hs_pct)}%</div>
-                            <div className="text-val-blue font-bold">{r.fk || 0}</div>
-                            <div>{r.mk || 0}</div>
-                            <div className={`${r.is_sub ? 'text-val-red' : 'text-foreground/20'}`}>{r.is_sub ? "Sub" : "-"}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           ))}
         </section>

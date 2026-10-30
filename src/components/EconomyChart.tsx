@@ -11,26 +11,43 @@ interface EconomyChartProps {
         win_type: string;
         economy_t1: number;
         economy_t2: number;
+        bank_t1?: number | null;
+        bank_t2?: number | null;
     }[];
     team1_id: number;
+    mode?: 'bank' | 'loadout' | 'total';
 }
 
-export default function EconomyChart({ rounds, team1_id }: EconomyChartProps) {
+const MODE_LABEL: Record<'bank' | 'loadout' | 'total', string> = {
+    bank: 'Avg. Bank',
+    loadout: 'Avg. Loadout',
+    total: 'Avg. Total',
+};
+
+function valueFor(r: { economy_t1: number; economy_t2: number; bank_t1?: number | null; bank_t2?: number | null }, team: 1 | 2, mode: 'bank' | 'loadout' | 'total') {
+    const loadout = team === 1 ? r.economy_t1 : r.economy_t2;
+    const bank = (team === 1 ? r.bank_t1 : r.bank_t2) ?? 0;
+    if (mode === 'bank') return bank;
+    if (mode === 'total') return loadout + bank;
+    return loadout;
+}
+
+export default function EconomyChart({ rounds, team1_id, mode = 'loadout' }: EconomyChartProps) {
     const data = useMemo(() => {
         const chartData = rounds.map(r => ({
             round: r.round_number,
-            diff: r.economy_t1 - r.economy_t2,
-            rawT1: r.economy_t1,
-            rawT2: r.economy_t2,
+            diff: valueFor(r, 1, mode) - valueFor(r, 2, mode),
+            rawT1: valueFor(r, 1, mode),
+            rawT2: valueFor(r, 2, mode),
             winTeam: r.winning_team_id,
             winType: r.win_type
         }));
 
         return chartData;
-    }, [rounds]);
+    }, [rounds, mode]);
 
-    const avgBankT1 = Math.round(rounds.reduce((sum, r) => sum + r.economy_t1, 0) / (rounds.length || 1));
-    const avgBankT2 = Math.round(rounds.reduce((sum, r) => sum + r.economy_t2, 0) / (rounds.length || 1));
+    const avgBankT1 = Math.round(rounds.reduce((sum, r) => sum + valueFor(r, 1, mode), 0) / (rounds.length || 1));
+    const avgBankT2 = Math.round(rounds.reduce((sum, r) => sum + valueFor(r, 2, mode), 0) / (rounds.length || 1));
 
     // Custom Tooltip
     const CustomTooltip = ({ active, payload }: any) => {
@@ -74,7 +91,7 @@ export default function EconomyChart({ rounds, team1_id }: EconomyChartProps) {
                     <div className="h-6 w-px bg-white/10"></div>
                     <div className="flex items-center gap-6 text-sm">
                         <div>
-                            <span className="text-foreground/60 mr-2">Avg. Bank:</span>
+                            <span className="text-foreground/60 mr-2">{MODE_LABEL[mode]}:</span>
                             <span className="text-[#0ea5e9] font-bold">{avgBankT1.toLocaleString()}</span>
                             <span className="text-foreground/40 mx-1">/</span>
                             <span className="text-[#ef4444] font-bold">{avgBankT2.toLocaleString()}</span>

@@ -756,7 +756,9 @@ export function parseHenrikDevJson(
                 plant: r.plant !== undefined ? !!r.plant : (r.bomb_planted || false),
                 defuse: r.defuse !== undefined ? !!r.defuse : (r.bomb_defused || false),
                 economy_t1: 0,
-                economy_t2: 0
+                economy_t2: 0,
+                bank_t1: 0,
+                bank_t2: 0
             };
             roundsArr.push(roundEntry);
 
@@ -782,6 +784,7 @@ export function parseHenrikDevJson(
                         y: loc.location.y,
                         view_radians: loc.view_radians ?? null,
                         time_in_round_ms: k.time_in_round_in_ms ?? null,
+                        weapon: locRid === killerRid ? (k.weapon?.name ?? null) : null,
                     });
                 });
 
@@ -803,6 +806,7 @@ export function parseHenrikDevJson(
                         y: k.location.y,
                         view_radians: null,
                         time_in_round_ms: k.time_in_round_in_ms ?? null,
+                        weapon: null,
                     });
                 }
             });
@@ -822,6 +826,7 @@ export function parseHenrikDevJson(
                         y: loc.location.y,
                         view_radians: loc.view_radians ?? null,
                         time_in_round_ms: null,
+                        weapon: null,
                     });
                 });
             }
@@ -841,6 +846,7 @@ export function parseHenrikDevJson(
                         y: loc.location.y,
                         view_radians: loc.view_radians ?? null,
                         time_in_round_ms: null,
+                        weapon: null,
                     });
                 });
             }
@@ -870,11 +876,12 @@ export function parseHenrikDevJson(
 
                         const weapon = ps.economy?.weapon?.name || null;
                         const spent = ps.economy?.loadout_value || 0;
+                        const bank = ps.economy?.remaining || 0;
 
-                        // Team round economy = summed loadout values
+                        // Team round economy = summed loadout values; bank = summed unspent credits
                         const teamNum = suggestions[targetRid]?.team_num;
-                        if (teamNum === 1) roundEntry.economy_t1 += spent;
-                        else if (teamNum === 2) roundEntry.economy_t2 += spent;
+                        if (teamNum === 1) { roundEntry.economy_t1 += spent; roundEntry.bank_t1 += bank; }
+                        else if (teamNum === 2) { roundEntry.economy_t2 += spent; roundEntry.bank_t2 += bank; }
                         
                         playerRoundsArr.push({
                             rid: targetRid,
@@ -2742,6 +2749,7 @@ export type PositionSnapshotRow = {
     y: number;
     view_radians: number | null;
     time_in_round_ms: number | null;
+    weapon: string | null;
 };
 
 /**
@@ -2751,7 +2759,7 @@ export async function getMatchMapPositions(matchId: number, mapIndex: number): P
     try {
         const { data, error } = await supabase
             .from('match_player_positions')
-            .select('round_number,event_type,event_seq,player_id,role,x,y,view_radians,time_in_round_ms')
+            .select('round_number,event_type,event_seq,player_id,role,x,y,view_radians,time_in_round_ms,weapon')
             .eq('match_id', matchId)
             .eq('map_index', mapIndex)
             .order('round_number', { ascending: true })
@@ -2760,6 +2768,48 @@ export async function getMatchMapPositions(matchId: number, mapIndex: number): P
         return data || [];
     } catch (error) {
         console.error('Error fetching match map positions:', error);
+        return [];
+    }
+}
+
+export type DuelCount = { killerId: number; victimId: number; count: number };
+
+/**
+ * Aggregate killer/victim pairs for one match map into kill-count tallies,
+ * for the Duels tab's head-to-head matrix.
+ */
+export async function getMatchMapDuels(matchId: number, mapIndex: number): Promise<DuelCount[]> {
+    try {
+        const { data, error } = await supabase
+            .from('match_player_positions')
+            .select('round_number,event_seq,player_id,role')
+            .eq('match_id', matchId)
+            .eq('map_index', mapIndex)
+            .eq('event_type', 'kill')
+            .in('role', ['killer', 'victim']);
+        if (error) throw error;
+
+        const byEvent = new Map<string, { killerId?: number; victimId?: number }>();
+        (data || []).forEach((r: any) => {
+            const key = `${r.round_number}-${r.event_seq}`;
+            const entry = byEvent.get(key) || {};
+            if (r.role === 'killer') entry.killerId = r.player_id;
+            else if (r.role === 'victim') entry.victimId = r.player_id;
+            byEvent.set(key, entry);
+        });
+
+        const tally = new Map<string, DuelCount>();
+        byEvent.forEach(({ killerId, victimId }) => {
+            if (!killerId || !victimId) return;
+            const key = `${killerId}-${victimId}`;
+            const existing = tally.get(key);
+            if (existing) existing.count += 1;
+            else tally.set(key, { killerId, victimId, count: 1 });
+        });
+
+        return [...tally.values()];
+    } catch (error) {
+        console.error('Error fetching match map duels:', error);
         return [];
     }
 }
@@ -3022,6 +3072,8 @@ async function getMatchDetails_uncached(matchId: number): Promise<{
             defuse: boolean;
             economy_t1: number;
             economy_t2: number;
+            bank_t1: number | null;
+            bank_t2: number | null;
         }>;
     }>;
 }> {
@@ -3109,7 +3161,9 @@ async function getMatchDetails_uncached(matchId: number): Promise<{
                     plant: r.plant,
                     defuse: r.defuse,
                     economy_t1: r.economy_t1,
-                    economy_t2: r.economy_t2
+                    economy_t2: r.economy_t2,
+                    bank_t1: r.bank_t1 ?? null,
+                    bank_t2: r.bank_t2 ?? null
                 }))
             };
         });
