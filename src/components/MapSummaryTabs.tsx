@@ -5,6 +5,7 @@ import EconomyChart from './EconomyChart';
 import RoundReplay from './RoundReplay';
 import DuelsMatrix from './DuelsMatrix';
 import RoundStrip from './RoundStrip';
+import PerformanceTab from './PerformanceTab';
 
 type MapData = {
     index: number;
@@ -25,7 +26,7 @@ interface Props {
     team2: MatchTeam;
 }
 
-const TABS = ['Scoreboard', 'Economy', 'Rounds', 'Duels'] as const;
+const TABS = ['Scoreboard', 'Performance', 'Economy', 'Rounds', 'Duels'] as const;
 type Tab = typeof TABS[number];
 
 export default function MapSummaryTabs({ matchId, map, team1, team2 }: Props) {
@@ -47,6 +48,7 @@ export default function MapSummaryTabs({ matchId, map, team1, team2 }: Props) {
             </div>
 
             {tab === 'Scoreboard' && <ScoreboardTab map={map} team1={team1} team2={team2} />}
+            {tab === 'Performance' && <PerformanceTab matchId={matchId} map={map} team1={team1} team2={team2} />}
             {tab === 'Economy' && <EconomyTab map={map} team1={team1} team2={team2} />}
             {tab === 'Rounds' && (
                 <RoundReplay matchId={matchId} mapIndex={map.index} mapName={map.name} team1Id={team1.id} roster={roster} rounds={map.rounds || []} />

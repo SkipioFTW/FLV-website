@@ -1301,6 +1301,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
     const [mapRoundsData, setMapRoundsData] = useState<any[]>([]);
     const [playerRoundsData, setPlayerRoundsData] = useState<any[]>([]);
     const [playerPositionsData, setPlayerPositionsData] = useState<any[]>([]);
+    const [playerDamageData, setPlayerDamageData] = useState<any[]>([]);
     const [mapForfeit, setMapForfeit] = useState(false);
     const [formatLocked, setFormatLocked] = useState(false);
     const [apiRegion, setApiRegion] = useState('na');
@@ -1411,6 +1412,12 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
                 player_id: labToId.get(pp.rid)
             })).filter(pp => pp.player_id);
             setPlayerPositionsData(resolvedPlayerPositions);
+            const resolvedPlayerDamage = (out.playerDamage || []).map(pd => ({
+                ...pd,
+                attacker_id: labToId.get(pd.attacker_rid),
+                victim_id: labToId.get(pd.victim_rid)
+            })).filter(pd => pd.attacker_id && pd.victim_id);
+            setPlayerDamageData(resolvedPlayerDamage);
             const riotToLabel = new Map(allPlayers.map(p => [String(p.riot_id || "").trim().toLowerCase(), `${p.name} (${p.riot_id || ''})`]));
 
             const processTeam = (teamNum: 1 | 2, roster: typeof allPlayers) => {
@@ -1598,7 +1605,7 @@ function ScoreMapEditor({ selectedSeason }: { selectedSeason: string }) {
             })), {
                 pendingId: pendingId || undefined,
                 url: window.localStorage.getItem('auto_selected_match_url') || undefined
-            }, mapRoundsData, playerRoundsData, playerPositionsData);
+            }, mapRoundsData, playerRoundsData, playerPositionsData, playerDamageData);
 
             window.localStorage.removeItem('auto_selected_match_id');
             window.localStorage.removeItem('pending_match_db_id');

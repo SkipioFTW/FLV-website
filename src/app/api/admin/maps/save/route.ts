@@ -18,7 +18,7 @@ function isAuthorized(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json();
-  const { matchId, mapData, playerStats, meta, rounds, playerRounds, playerPositions } = body || {};
+  const { matchId, mapData, playerStats, meta, rounds, playerRounds, playerPositions, playerDamage } = body || {};
   if (!matchId || !mapData) return NextResponse.json({ error: 'bad request' }, { status: 400 });
   // Enforce map index cap based on match format
   const { data: fmtMatch } = await supabaseServer.from('matches').select('format').eq('id', matchId).single();
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     supabaseServer.from('match_rounds').delete().eq('match_id', matchId).eq('map_index', mapData.index),
     supabaseServer.from('match_player_rounds').delete().eq('match_id', matchId).eq('map_index', mapData.index),
     supabaseServer.from('match_player_positions').delete().eq('match_id', matchId).eq('map_index', mapData.index),
+    supabaseServer.from('match_player_damage').delete().eq('match_id', matchId).eq('map_index', mapData.index),
   ]);
   {
     const { error } = await supabaseServer.from('match_maps').insert({
@@ -154,6 +155,23 @@ export async function POST(req: NextRequest) {
         view_radians: pp.view_radians,
         time_in_round_ms: pp.time_in_round_ms,
         weapon: pp.weapon,
+      }))
+    );
+  }
+
+  // Insert per-opponent damage data
+  if (Array.isArray(playerDamage) && playerDamage.length > 0) {
+    await supabaseServer.from('match_player_damage').insert(
+      playerDamage.map((pd: any) => ({
+        match_id: matchId,
+        map_index: mapData.index,
+        round_number: pd.round_number,
+        attacker_id: pd.attacker_id,
+        victim_id: pd.victim_id,
+        damage: pd.damage,
+        headshots: pd.headshots,
+        bodyshots: pd.bodyshots,
+        legshots: pd.legshots,
       }))
     );
   }

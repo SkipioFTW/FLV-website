@@ -119,6 +119,12 @@ export async function POST(req: NextRequest) {
     player_id: labToId.get(pp.rid),
   })).filter((pp: any) => pp.player_id);
 
+  const resolvedPlayerDamage = (out.playerDamage || []).map((pd: any) => ({
+    ...pd,
+    attacker_id: labToId.get(pd.attacker_rid),
+    victim_id: labToId.get(pd.victim_rid),
+  })).filter((pd: any) => pd.attacker_id && pd.victim_id);
+
   const processTeam = (teamNum: 1 | 2, roster: PlayerLite[]) => {
     const teamSugRids = Object.keys(out.suggestions).filter(k => out.suggestions[k].team_num === teamNum);
     const rosterLabels = roster.map(p => `${p.name} (${p.riot_id || ''})`);
@@ -213,5 +219,6 @@ export async function POST(req: NextRequest) {
     rounds: out.rounds || [],
     playerRounds: resolvedPlayerRounds,
     playerPositions: resolvedPlayerPositions,
+    playerDamage: resolvedPlayerDamage,
   });
 }

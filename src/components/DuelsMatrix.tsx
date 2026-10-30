@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getMatchMapDuels, type DuelCount } from '@/lib/data';
-import { VALORANT_AGENT_PORTRAITS } from '@/lib/valorantAgents';
+import PlayerAvatar from './PlayerAvatar';
 
 type PlayerStat = { player_id: number; player_name: string; team_id: number; agent: string };
 
@@ -12,20 +12,6 @@ interface Props {
     map: { stats: PlayerStat[] };
     team1: { id: number; name: string };
     team2: { id: number; name: string };
-}
-
-function PlayerHead({ p }: { p: PlayerStat }) {
-    const portrait = VALORANT_AGENT_PORTRAITS[p.agent];
-    return (
-        <div className="flex flex-col items-center gap-1 w-16 shrink-0">
-            {portrait ? (
-                <img src={portrait} alt={p.agent} className="w-8 h-8 rounded-full object-cover border border-white/20" />
-            ) : (
-                <div className="w-8 h-8 rounded-full bg-white/10" />
-            )}
-            <div className="text-[10px] font-bold truncate w-full text-center">{p.player_name}</div>
-        </div>
-    );
 }
 
 export default function DuelsMatrix({ matchId, mapIndex, map, team1, team2 }: Props) {
@@ -73,9 +59,9 @@ export default function DuelsMatrix({ matchId, mapIndex, map, team1, team2 }: Pr
                     <div className="text-center">
                         <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-2">Top Rivalry</div>
                         <div className="flex items-center gap-4">
-                            <PlayerHead p={topRivalry.a} />
+                            <PlayerAvatar p={topRivalry.a} />
                             <span className="text-foreground/30 font-bold">vs</span>
-                            <PlayerHead p={topRivalry.b} />
+                            <PlayerAvatar p={topRivalry.b} />
                         </div>
                     </div>
                 </div>
@@ -87,14 +73,14 @@ export default function DuelsMatrix({ matchId, mapIndex, map, team1, team2 }: Pr
                         <tr>
                             <th className="p-3"></th>
                             {team2Players.map(p => (
-                                <th key={p.player_id} className="p-2"><PlayerHead p={p} /></th>
+                                <th key={p.player_id} className="p-2"><PlayerAvatar p={p} /></th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         {team1Players.map(row => (
                             <tr key={row.player_id} className="border-t border-white/5">
-                                <td className="p-2"><PlayerHead p={row} /></td>
+                                <td className="p-2"><PlayerAvatar p={row} /></td>
                                 {team2Players.map(col => {
                                     const rowKills = countOf(row.player_id, col.player_id);
                                     const colKills = countOf(col.player_id, row.player_id);

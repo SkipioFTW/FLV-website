@@ -247,6 +247,7 @@ export function parseTrackerJson(
     rounds: any[];
     playerRounds: any[];
     playerPositions: any[];
+    playerDamage: any[];
 } {
     try {
         const suggestions: Record<string, any> = {};
@@ -407,9 +408,9 @@ export function parseTrackerJson(
         t1_rounds = Number(r1?.stats?.roundsWon?.value ?? 0);
         t2_rounds = Number(r2?.stats?.roundsWon?.value ?? 0);
 
-        return { suggestions, map_name, t1_rounds, t2_rounds, rounds, playerRounds: playerRoundsArr, playerPositions: [] };
+        return { suggestions, map_name, t1_rounds, t2_rounds, rounds, playerRounds: playerRoundsArr, playerPositions: [], playerDamage: [] };
     } catch {
-        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [], playerPositions: [] };
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [], playerPositions: [], playerDamage: [] };
     }
 }
 
@@ -448,6 +449,7 @@ export function parseHenrikDevJson(
         const roundsArr: any[] = [];
         const playerRoundsArr: any[] = [];
         const positionsArr: any[] = [];
+        const damageArr: any[] = [];
         const lower = (x: any) => String(x || "").trim().toLowerCase();
         
         const data = js?.data || {};
@@ -871,6 +873,18 @@ export function parseHenrikDevJson(
                         if (Array.isArray(ps.damage_events)) {
                             ps.damage_events.forEach((de: any) => {
                                 roundDamage += de.damage || 0;
+                                const victimRid = ridOf(de.player);
+                                if (victimRid && victimRid !== targetRid) {
+                                    damageArr.push({
+                                        attacker_rid: targetRid,
+                                        victim_rid: victimRid,
+                                        round_number: rNum + 1,
+                                        damage: de.damage || 0,
+                                        headshots: de.headshots || 0,
+                                        bodyshots: de.bodyshots || 0,
+                                        legshots: de.legshots || 0,
+                                    });
+                                }
                             });
                         }
 
@@ -896,9 +910,9 @@ export function parseHenrikDevJson(
             }
         });
         
-        return { suggestions, map_name, t1_rounds, t2_rounds, rounds: roundsArr, playerRounds: playerRoundsArr, playerPositions: positionsArr };
+        return { suggestions, map_name, t1_rounds, t2_rounds, rounds: roundsArr, playerRounds: playerRoundsArr, playerPositions: positionsArr, playerDamage: damageArr };
     } catch {
-        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [], playerPositions: [] };
+        return { suggestions: {}, map_name: "Unknown", t1_rounds: 0, t2_rounds: 0, rounds: [], playerRounds: [], playerPositions: [], playerDamage: [] };
     }
 }
 
@@ -2814,6 +2828,87 @@ export async function getMatchMapDuels(matchId: number, mapIndex: number): Promi
     }
 }
 
+export type PlayerDamageCount = { attackerId: number; victimId: number; damage: number; headshots: number; bodyshots: number; legshots: number };
+
+/**
+ * Sum per-opponent damage dealt/received for one match map, across all rounds.
+ * Powers the Performance tab's opponent-by-opponent table.
+ */
+export async function getMatchPlayerDamage(matchId: number, mapIndex: number): Promise<PlayerDamageCount[]> {
+    try {
+        const { data, error } = await supabase
+            .from('match_player_damage')
+            .select('attacker_id,victim_id,damage,headshots,bodyshots,legshots')
+            .eq('match_id', matchId)
+            .eq('map_index', mapIndex);
+        if (error) throw error;
+
+        const tally = new Map<string, PlayerDamageCount>();
+        (data || []).forEach((r: any) => {
+            const key = `${r.attacker_id}-${r.victim_id}`;
+            const existing = tally.get(key);
+            if (existing) {
+                existing.damage += r.damage || 0;
+                existing.headshots += r.headshots || 0;
+                existing.bodyshots += r.bodyshots || 0;
+                existing.legshots += r.legshots || 0;
+            } else {
+                tally.set(key, {
+                    attackerId: r.attacker_id,
+                    victimId: r.victim_id,
+                    damage: r.damage || 0,
+                    headshots: r.headshots || 0,
+                    bodyshots: r.bodyshots || 0,
+                    legshots: r.legshots || 0,
+                });
+            }
+        });
+
+        return [...tally.values()];
+    } catch (error) {
+        console.error('Error fetching match player damage:', error);
+        return [];
+    }
+}
+
+/**
+ * Round numbers that had a spike plant, mapped to the attacking team's id
+ * (the planter's team, from match_stats_map). Only covers rounds with a
+ * plant -- used as anchors to infer the attack/defense side of every other
+ * round via the standard half/OT swap rules (see src/lib/matchSides.ts).
+ */
+export async function getRoundAttackTeam(matchId: number, mapIndex: number): Promise<Record<number, number>> {
+    try {
+        const [posRes, statsRes] = await Promise.all([
+            supabase
+                .from('match_player_positions')
+                .select('round_number,player_id')
+                .eq('match_id', matchId)
+                .eq('map_index', mapIndex)
+                .eq('event_type', 'plant')
+                .eq('role', 'planter'),
+            supabase
+                .from('match_stats_map')
+                .select('player_id,team_id')
+                .eq('match_id', matchId)
+                .eq('map_index', mapIndex),
+        ]);
+        if (posRes.error) throw posRes.error;
+        if (statsRes.error) throw statsRes.error;
+
+        const teamOf = new Map((statsRes.data || []).map((s: any) => [s.player_id, s.team_id]));
+        const result: Record<number, number> = {};
+        (posRes.data || []).forEach((r: any) => {
+            const teamId = teamOf.get(r.player_id);
+            if (teamId) result[r.round_number] = teamId;
+        });
+        return result;
+    } catch (error) {
+        console.error('Error fetching round attack team anchors:', error);
+        return {};
+    }
+}
+
 export async function generateNextPlayoffRound(currentRound: number): Promise<boolean> {
     try {
         const activeSeason = await getDefaultSeason();
@@ -3229,13 +3324,14 @@ export async function saveMapResults(
     meta?: { pendingId?: number, url?: string },
     rounds?: any[],
     playerRounds?: any[],
-    playerPositions?: any[]
+    playerPositions?: any[],
+    playerDamage?: any[]
 ): Promise<boolean> {
     try {
         const res = await fetch('/api/admin/maps/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matchId, mapData, playerStats, meta, rounds, playerRounds, playerPositions })
+            body: JSON.stringify({ matchId, mapData, playerStats, meta, rounds, playerRounds, playerPositions, playerDamage })
         } as any);
         if (!res.ok) throw new Error(await res.text());
         return true;
